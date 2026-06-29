@@ -1,0 +1,117 @@
+{
+  "theme": "Dark",
+  "archetype": "Archetype 4: Swiss & High-Contrast (adapted for Technical/SOC Dashboard)",
+  "concept": "Tactical Control Room / Data-Dense NOC Console",
+  "colors": {
+    "background": {
+      "base": "#050505",
+      "surface": "#111111",
+      "surface_hover": "#1A1A1A",
+      "surface_active": "#222222"
+    },
+    "border": {
+      "default": "#222222",
+      "focus": "#444444",
+      "danger": "#FF3B30",
+      "active": "#FFFFFF"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#888888",
+      "muted": "#555555",
+      "inverse": "#000000"
+    },
+    "signal": {
+      "danger": "#FF3B30",
+      "warning": "#FFCC00",
+      "safe": "#0044FF",
+      "quarantined": "#555555",
+      "nominal": "#FFFFFF"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Cabinet Grotesk, sans-serif",
+      "mono": "JetBrains Mono, monospace",
+      "body": "Inter, sans-serif"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tighter uppercase",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-bold",
+      "h4": "text-lg font-mono font-semibold uppercase tracking-[0.1em]",
+      "body": "text-sm text-secondary",
+      "data": "text-xs font-mono tracking-tight",
+      "overline": "text-[10px] font-mono uppercase tracking-[0.2em] text-muted"
+    }
+  },
+  "layout": {
+    "strategy": "Mode B: The Control Room Grid",
+    "container": "w-full min-h-screen bg-[#050505] text-white overflow-x-hidden flex",
+    "grid_system": "grid grid-cols-1 lg:grid-cols-12 gap-4 p-4",
+    "sections": {
+      "sidebar": "w-16 hidden md:flex flex-col border-r border-[#222] bg-[#050505] items-center py-6 gap-8",
+      "main_content": "flex-1 flex flex-col min-h-screen",
+      "header": "h-20 border-b border-[#222] flex items-center justify-between px-6",
+      "dashboard_grid": "flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-6 auto-rows-min",
+      "fleet_widget": "col-span-1 lg:col-span-8 flex flex-col gap-4",
+      "scanner_widget": "col-span-1 lg:col-span-4 flex flex-col gap-4"
+    }
+  },
+  "components": {
+    "card": {
+      "base": "bg-[#111111] border border-[#222222] rounded-none overflow-hidden",
+      "header": "border-b border-[#222222] px-4 py-3 bg-[#161616]",
+      "content": "p-4"
+    },
+    "button": {
+      "primary": "bg-white text-black hover:bg-gray-200 rounded-none font-mono text-sm uppercase px-4 py-2 transition-colors",
+      "danger": "bg-[#FF3B30] text-white hover:bg-[#D62828] rounded-none font-mono text-sm uppercase px-4 py-2 transition-colors",
+      "outline": "border border-[#444] text-white hover:bg-[#222] hover:border-white rounded-none font-mono text-sm uppercase px-4 py-2 transition-all",
+      "ghost": "text-secondary hover:text-white hover:bg-[#1A1A1A] rounded-none px-4 py-2 transition-colors"
+    },
+    "badge": {
+      "safe": "bg-[#0044FF]/10 text-[#0044FF] border border-[#0044FF]/30 rounded-none px-2 py-0.5 text-[10px] font-mono uppercase",
+      "warning": "bg-[#FFCC00]/10 text-[#FFCC00] border border-[#FFCC00]/30 rounded-none px-2 py-0.5 text-[10px] font-mono uppercase",
+      "danger": "bg-[#FF3B30]/10 text-[#FF3B30] border border-[#FF3B30]/30 animate-pulse rounded-none px-2 py-0.5 text-[10px] font-mono uppercase",
+      "quarantined": "bg-[#555555]/10 text-[#888] border border-[#555]/30 rounded-none px-2 py-0.5 text-[10px] font-mono uppercase"
+    },
+    "input": "bg-[#0A0A0A] border border-[#333] rounded-none text-white font-mono text-sm px-3 py-2 focus:border-white focus:outline-none transition-colors",
+    "table": "w-full text-sm font-mono text-left",
+    "table_header": "text-[10px] uppercase text-secondary border-b border-[#222] bg-[#0A0A0A]",
+    "table_row": "border-b border-[#1A1A1A] hover:bg-[#161616] transition-colors cursor-pointer"
+  },
+  "micro_interactions": {
+    "hover": "Sharp color transitions, 1px border highlights, no shadow lifting.",
+    "scan_progress": "Matrix-like character shuffling or a rigid linear progress bar with a blinking terminal cursor.",
+    "threat_alert": "Red 1px border flash on the container, accompanied by a typing effect for the alert log.",
+    "loading": "ASCII spinners (e.g., | / - \\) or block progress [████░░░░]"
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "stroke-width: 1.5, rigid, unstyled",
+    "usage": "Use precise technical icons: Activity, ShieldAlert, Cpu, HardDrive, Wifi, RadioTower, Crosshair, TerminalSquare, AlertTriangle, Fingerprint."
+  },
+  "media": {
+    "images": {
+      "background_texture": {
+        "url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHwxfHxkYXJrJTIwYWJzdHJhY3QlMjB0ZXh0dXJlfGVufDB8fHx8MTc4MjYxNTUzNnww&ixlib=rb-4.1.0&q=85",
+        "description": "Dark abstract texture for subtle noise overlay on the dashboard background.",
+        "usage": "Apply to the main container with opacity-5 and mix-blend-overlay to kill the digital flatness."
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "INSTALL DEPENDENCIES: Install `lucide-react`, `framer-motion`, `recharts`, `clsx`, `tailwind-merge`.",
+    "SETUP SHADCN: Initialize Shadcn and add components: sheet, button, input, badge, progress, dialog, scroll-area, tabs, table.",
+    "STYLING: Strictly enforce flat, sharp geometry (rounded-none). Remove all box-shadows. Use 1px solid borders for separation.",
+    "LAYOUT - APP SHELL: Create a left sidebar for nav (icons) and a main content area. The main area should have a top header with a scrolling Threat Feed Marquee.",
+    "DASHBOARD GRID: The main view has two columns. Left (Fleet Grid) and Right (Scanner & AI Ticker).",
+    "FLEET GRID: Display a data-dense list/table of monitored devices (Tesla Model S, Linux Server, MacBook, Camera 04). Include columns: Device ID, OS/Type, IP Address, Memory Load, Status (Badge). Click a row to open the Device Detail Sheet.",
+    "DEVICE DETAIL (SHEET): When a device is selected, open a Shadcn Sheet from the right. It must contain: Memory Map (visual blocks or hex dump UI), Running Processes list, Network Connections, and RAT/Rootkit surface checks. Include a large 'ISOLATE/QUARANTINE' button.",
+    "SCANNER WIDGET: A dedicated card for 'URL/File Heuristic Analysis'. Provide an input field and upload zone. On submit, show a terminal-like progress, then an AI Verdict (Risk Score 0-100, IOCs found, AI reasoning text).",
+    "THREAT LOG: A terminal-style scrolling list of recent alerts. Use JetBrains Mono. Prefix with timestamps.",
+    "DATA-TESTID: Ensure EVERY interactive element (buttons, inputs, rows, tabs, dialogs) has a descriptive `data-testid` attribute (e.g., `data-testid='scan-submit-button'`, `data-testid='device-row-1'`).",
+    "NOISE OVERLAY: Use the provided background_texture image as a fixed, low-opacity (5%) overlay to give a 'tactical military screen' feel."
+  ]
+}
