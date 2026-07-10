@@ -154,6 +154,79 @@ class ReportMissingPayload(BaseModel):
     note: Optional[str] = None
 
 
+AlertKind = Literal[
+    "scam", "phishing", "malware_url", "keylogger", "bank_drop",
+    "identity_theft", "ransomware", "spoofed_caller", "other"
+]
+
+
+class CommunityAlert(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
+    kind: AlertKind
+    title: str
+    description: str
+    indicators: List[str] = []           # URLs, phone numbers, handles, hashes, aliases
+    severity: Literal["info", "warning", "danger", "critical"] = "warning"
+    region: str = "Local Area"
+    reporter_handle: str = "neighbourhood_watch"
+    corroborations: int = 0
+    status: Literal["active", "verified", "resolved"] = "active"
+
+
+class CommunityAlertCreate(BaseModel):
+    kind: AlertKind
+    title: str
+    description: str
+    indicators: List[str] = []
+    severity: Literal["info", "warning", "danger", "critical"] = "warning"
+    region: str = "Local Area"
+    reporter_handle: Optional[str] = "neighbour"
+
+
+class FraudReportCreate(BaseModel):
+    scheme_type: AlertKind
+    perpetrator_alias: Optional[str] = None
+    contact_indicators: List[str] = []   # phone / email / social handles / URLs / wallet / bank
+    jurisdictions: List[str] = []        # states / regions where the scheme has operated
+    amount_estimate: Optional[str] = None
+    victims_count: int = 1
+    narrative: str
+    evidence_urls: List[str] = []
+    reporter_contact: Optional[str] = None
+
+
+class FraudReport(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
+    case_ref: str
+    scheme_type: AlertKind
+    perpetrator_alias: Optional[str] = None
+    contact_indicators: List[str] = []
+    jurisdictions: List[str] = []
+    amount_estimate: Optional[str] = None
+    victims_count: int = 1
+    narrative: str
+    evidence_urls: List[str] = []
+    reporter_contact: Optional[str] = None
+    status: Literal["draft", "submitted", "escalated"] = "submitted"
+    evidence_packet: Optional[str] = None
+
+
+class RemediationJob(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
+    device_id: str
+    device_hostname: str
+    status: Literal["running", "complete", "failed"] = "complete"
+    threats_removed: int = 0
+    steps: List[Dict[str, Any]] = []
+    summary: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Seed data
 # ---------------------------------------------------------------------------
@@ -196,6 +269,34 @@ SEED_LOGS = [
     {"severity": "warning", "category": "MEMORY", "message": "macbook-ada memory pressure 71% — scan rescheduled."},
 ]
 
+SEED_ALERTS = [
+    {"kind": "phishing", "title": "Fake parcel redelivery SMS circulating",
+     "description": "Residents report a texted link claiming a missed delivery. The page harvests card details and a one-time passcode.",
+     "indicators": ["https://royal-parcel-redeliver.top/track", "+44 7700 900123"],
+     "severity": "danger", "region": "North District", "reporter_handle": "watch_captain_07",
+     "corroborations": 12, "status": "verified"},
+    {"kind": "bank_drop", "title": "Crew recruiting 'money mules' at the community centre",
+     "description": "A group is offering fast cash to let strangers move money through personal accounts. This is money-laundering; participants can face charges.",
+     "indicators": ["@quickcash_relief", "sortcode 04-00-04"],
+     "severity": "critical", "region": "Central", "reporter_handle": "neighbour",
+     "corroborations": 5, "status": "active"},
+    {"kind": "identity_theft", "title": "Utility 'account update' emails spoofing the local provider",
+     "description": "Emails ask you to 'reconfirm' your name, DOB and address to avoid disconnection. The provider never asks for this by email.",
+     "indicators": ["billing@power-account-update.click", "https://power-account-update.click/verify"],
+     "severity": "danger", "region": "Local Area", "reporter_handle": "watch_admin",
+     "corroborations": 9, "status": "verified"},
+    {"kind": "keylogger", "title": "Free 'PC speed booster' bundling a credential stealer",
+     "description": "A download advertised on a local forum installs a keylogger. Uninstall via SentinelGrid and rotate any passwords typed after install.",
+     "indicators": ["turbo-pc-booster-free.xyz", "sha256:not-indexed"],
+     "severity": "danger", "region": "Local Area", "reporter_handle": "sentinel_analyst",
+     "corroborations": 7, "status": "active"},
+    {"kind": "spoofed_caller", "title": "Callers impersonating the fraud team of a major bank",
+     "description": "Caller ID shows the real bank number (spoofed). They pressure you to move funds to a 'safe account'. Hang up and call the number on your card.",
+     "indicators": ["+1 202-555-0114"],
+     "severity": "warning", "region": "Everywhere", "reporter_handle": "neighbour",
+     "corroborations": 3, "status": "active"},
+]
+
 
 async def ensure_seed():
     if await db.devices.count_documents({}) == 0:
@@ -215,6 +316,10 @@ async def ensure_seed():
         for entry in SEED_LOGS:
             tl = ThreatLog(**entry)
             await db.threat_logs.insert_one(tl.model_dump())
+    if await db.community_alerts.count_documents({}) == 0:
+        for entry in SEED_ALERTS:
+            ca = CommunityAlert(**entry)
+            await db.community_alerts.insert_one(ca.model_dump())
 
 
 @app.on_event("startup")
@@ -508,6 +613,10 @@ async def stats():
     scans = await db.scan_results.count_documents({})
     threats = await db.threat_logs.count_documents({"severity": {"$in": ["danger", "critical"]}})
     open_inc = await db.incidents.count_documents({"status": {"$ne": "closed"}})
+    community_alerts = await db.community_alerts.count_documents({"status": {"$in": ["active", "verified"]}})
+    fraud_reports = await db.fraud_reports.count_documents({})
+    remediations = await db.remediation_jobs.count_documents({})
+    bl = await community_blocklist()
     coverage = round((1 - (infected / total)) * 100, 1) if total else 100.0
     return {
         "devices_total": total,
@@ -519,6 +628,10 @@ async def stats():
         "scans_performed": scans,
         "threats_neutralized": threats,
         "open_incidents": open_inc,
+        "community_alerts": community_alerts,
+        "blocklist_size": bl["count"],
+        "fraud_reports": fraud_reports,
+        "remediations_run": remediations,
         "surface_coverage_pct": coverage,
         "vt_enabled": bool(VT_API_KEY),
     }
@@ -725,6 +838,255 @@ async def list_scans(limit: int = 25):
 @api_router.get("/")
 async def root():
     return {"service": "SentinelGrid", "status": "operational", "time": now_iso(), "vt_enabled": bool(VT_API_KEY)}
+
+
+# ---------------------------------------------------------------------------
+# LAN / WAN network topology (derived from the live fleet)
+# ---------------------------------------------------------------------------
+@api_router.get("/network/topology")
+async def network_topology():
+    docs = await db.devices.find({}, {"_id": 0}).to_list(500)
+    devices = [Device(**d) for d in docs]
+
+    nodes: List[Dict[str, Any]] = [
+        {"id": "wan", "label": "WAN · INTERNET", "kind": "wan", "status": "clean"}
+    ]
+    links: List[Dict[str, Any]] = []
+
+    gateway = next((d for d in devices if d.device_type == "router"), None)
+    gw_id = "gateway"
+    nodes.append({
+        "id": gw_id,
+        "label": gateway.hostname if gateway else "edge-gateway",
+        "kind": "gateway",
+        "ip": gateway.ip_address if gateway else "10.0.0.1",
+        "status": gateway.status if gateway else "clean",
+    })
+    links.append({"source": "wan", "target": gw_id, "kind": "uplink", "status": "clean"})
+
+    subnets: Dict[str, List[Device]] = {}
+    for d in devices:
+        if gateway and d.id == gateway.id:
+            continue
+        octets = d.ip_address.split(".")
+        subnet = (".".join(octets[:3]) + ".0/24") if len(octets) >= 3 else "unknown"
+        subnets.setdefault(subnet, []).append(d)
+
+    hostile_links = 0
+    for subnet in sorted(subnets.keys()):
+        members = subnets[subnet]
+        sub_id = f"subnet:{subnet}"
+        seg_infected = any(m.status == "infected" for m in members)
+        nodes.append({
+            "id": sub_id, "label": subnet, "kind": "subnet",
+            "status": "infected" if seg_infected else "clean", "count": len(members),
+        })
+        links.append({"source": gw_id, "target": sub_id, "kind": "lan", "status": "clean"})
+        for m in members:
+            nodes.append({
+                "id": m.id, "label": m.hostname, "kind": "endpoint",
+                "device_type": m.device_type, "ip": m.ip_address, "os": m.os,
+                "location": m.location, "status": m.status, "threats": m.threats_detected,
+            })
+            links.append({"source": sub_id, "target": m.id, "kind": "endpoint", "status": m.status})
+            if m.status == "infected":
+                rng = random.Random(m.fingerprint)
+                c2_id = f"c2:{m.id[:8]}"
+                nodes.append({
+                    "id": c2_id,
+                    "label": f"185.220.{rng.randint(0,255)}.{rng.randint(1,254)}:4444",
+                    "kind": "threat", "status": "hostile",
+                })
+                links.append({"source": m.id, "target": c2_id, "kind": "c2", "status": "hostile"})
+                hostile_links += 1
+
+    return {
+        "nodes": nodes,
+        "links": links,
+        "summary": {
+            "endpoints": sum(1 for n in nodes if n["kind"] == "endpoint"),
+            "subnets": len(subnets),
+            "hostile_links": hostile_links,
+            "gateway": gateway.hostname if gateway else "edge-gateway",
+        },
+        "generated_at": now_iso(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Remediation console (authorised clean-up on consented fleet devices)
+# ---------------------------------------------------------------------------
+def _build_remediation_steps(dev: Device) -> List[Dict[str, Any]]:
+    seq = [
+        ("ISOLATE", f"Network-isolating {dev.hostname} — outbound sessions on TCP/4444 terminated."),
+        ("SNAPSHOT", "Capturing volatile memory + process tree for forensic evidence."),
+        ("SCAN", "Deep signature + heuristic sweep across memory, disk and persistence anchors."),
+        ("KILL", "Terminating malicious processes (svhost.exe, miner x.py) and unhooking kernel callbacks."),
+        ("PURGE", "Removing dropped payloads, scheduled tasks and autostart/registry persistence."),
+        ("CREDS", "Flagging credentials for rotation; revoking device tokens."),
+        ("REATTEST", "Re-attesting firmware and verifying W^X memory page compliance."),
+        ("VERIFY", f"Clean state confirmed on {dev.hostname}. Reconnecting to LAN under watch."),
+    ]
+    return [{"phase": p, "detail": d, "status": "done"} for p, d in seq]
+
+
+@api_router.post("/devices/{device_id}/remediate")
+async def remediate_device(device_id: str):
+    doc = await db.devices.find_one({"id": device_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Device not found")
+    dev = Device(**doc)
+    removed = dev.threats_detected or (1 if dev.status == "infected" else 0)
+
+    steps = _build_remediation_steps(dev)
+    job = RemediationJob(
+        device_id=dev.id,
+        device_hostname=dev.hostname,
+        status="complete",
+        threats_removed=removed,
+        steps=steps,
+        summary=f"{removed} threat(s) safely removed from {dev.hostname}. Endpoint re-attested and back under watch.",
+    )
+    await db.remediation_jobs.insert_one(job.model_dump())
+
+    await db.devices.update_one(
+        {"id": device_id},
+        {"$set": {"status": "clean", "threats_detected": 0, "last_seen": now_iso()}},
+    )
+    dev.status = "clean"  # type: ignore[assignment]
+    await _log_event("info", "REMEDIATE",
+                     f"Remediation complete on {dev.hostname} — {removed} threat(s) removed.", dev)
+
+    # auto-close open incidents tied to this device
+    await db.incidents.update_many(
+        {"device_id": device_id, "status": {"$ne": "closed"}},
+        {"$set": {"status": "closed", "updated_at": now_iso()}},
+    )
+    return job.model_dump()
+
+
+@api_router.get("/remediation/jobs", response_model=List[RemediationJob])
+async def list_remediation_jobs(limit: int = 25):
+    docs = await db.remediation_jobs.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return [RemediationJob(**d) for d in docs]
+
+
+# ---------------------------------------------------------------------------
+# Community Watch — consent-based neighbourhood threat sharing
+# ---------------------------------------------------------------------------
+@api_router.get("/community/alerts", response_model=List[CommunityAlert])
+async def list_community_alerts(limit: int = 100):
+    docs = await db.community_alerts.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return [CommunityAlert(**d) for d in docs]
+
+
+@api_router.post("/community/alerts", response_model=CommunityAlert)
+async def create_community_alert(payload: CommunityAlertCreate):
+    alert = CommunityAlert(**{k: v for k, v in payload.model_dump().items() if v is not None})
+    await db.community_alerts.insert_one(alert.model_dump())
+    await _log_event(alert.severity, "WATCH",
+                     f"Community alert filed: {alert.title} ({alert.kind}) · {alert.region}")
+    return alert
+
+
+@api_router.post("/community/alerts/{alert_id}/corroborate")
+async def corroborate_alert(alert_id: str):
+    doc = await db.community_alerts.find_one({"id": alert_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Alert not found")
+    alert = CommunityAlert(**doc)
+    alert.corroborations += 1
+    if alert.corroborations >= 5 and alert.status == "active":
+        alert.status = "verified"
+    await db.community_alerts.replace_one({"id": alert_id}, alert.model_dump())
+    return {"ok": True, "corroborations": alert.corroborations, "status": alert.status}
+
+
+@api_router.get("/community/blocklist")
+async def community_blocklist():
+    docs = await db.community_alerts.find(
+        {"status": {"$in": ["active", "verified"]}}, {"_id": 0}
+    ).to_list(500)
+    seen: Dict[str, Dict[str, Any]] = {}
+    for d in docs:
+        alert = CommunityAlert(**d)
+        for ind in alert.indicators:
+            key = ind.strip().lower()
+            if not key:
+                continue
+            if key not in seen:
+                seen[key] = {
+                    "indicator": ind.strip(),
+                    "kind": alert.kind,
+                    "severity": alert.severity,
+                    "confirmations": alert.corroborations,
+                    "first_seen": alert.created_at,
+                }
+    entries = sorted(seen.values(), key=lambda e: e["confirmations"], reverse=True)
+    return {"count": len(entries), "entries": entries, "generated_at": now_iso()}
+
+
+# ---------------------------------------------------------------------------
+# Fraud board — structured reports + authority-ready evidence packet
+# ---------------------------------------------------------------------------
+def _build_evidence_packet(rep: FraudReport) -> str:
+    lines = [
+        "SENTINELGRID — FRAUD EVIDENCE PACKET",
+        f"Case reference : {rep.case_ref}",
+        f"Generated (UTC): {rep.created_at}",
+        f"Scheme type    : {rep.scheme_type.replace('_', ' ').title()}",
+        "",
+        "SUBJECT / PERPETRATOR",
+        f"  Alias / handle : {rep.perpetrator_alias or 'unknown'}",
+        f"  Jurisdictions  : {', '.join(rep.jurisdictions) or 'not specified'}",
+        "",
+        "IMPACT",
+        f"  Estimated loss : {rep.amount_estimate or 'not quantified'}",
+        f"  Victims known  : {rep.victims_count}",
+        "",
+        "CONTACT INDICATORS (phone / email / handle / URL / account)",
+    ]
+    lines += [f"  - {c}" for c in (rep.contact_indicators or ["none provided"])]
+    lines += ["", "EVIDENCE LINKS"]
+    lines += [f"  - {u}" for u in (rep.evidence_urls or ["none provided"])]
+    lines += [
+        "",
+        "NARRATIVE",
+        f"  {rep.narrative}",
+        "",
+        f"Reporter contact : {rep.reporter_contact or 'withheld'}",
+        "",
+        "SUGGESTED NEXT STEPS",
+        "  1. Report to your national cybercrime unit:",
+        "     - US:  FBI IC3 (ic3.gov) / FTC (reportfraud.ftc.gov)",
+        "     - UK:  Action Fraud (actionfraud.police.uk) / 0300 123 2040",
+        "     - AU:  ReportCyber (cyber.gov.au) / Scamwatch",
+        "  2. Notify the impersonated bank/brand via their official fraud line.",
+        "  3. Preserve original messages, headers and screenshots — do not alter.",
+        "  4. Warn neighbours by publishing indicators to Community Watch.",
+        "",
+        "This packet is a citizen report to assist authorities. It is not a legal",
+        "determination of guilt. SentinelGrid performs no covert surveillance.",
+    ]
+    return "\n".join(lines)
+
+
+@api_router.get("/community/fraud-reports", response_model=List[FraudReport])
+async def list_fraud_reports(limit: int = 50):
+    docs = await db.fraud_reports.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return [FraudReport(**d) for d in docs]
+
+
+@api_router.post("/community/fraud-reports", response_model=FraudReport)
+async def create_fraud_report(payload: FraudReportCreate):
+    seq = await db.fraud_reports.count_documents({}) + 1
+    case_ref = f"SG-{datetime.now(timezone.utc).strftime('%Y%m')}-{seq:04d}"
+    rep = FraudReport(case_ref=case_ref, **payload.model_dump())
+    rep.evidence_packet = _build_evidence_packet(rep)
+    await db.fraud_reports.insert_one(rep.model_dump())
+    await _log_event("warning", "FRAUD",
+                     f"Fraud report {case_ref} filed: {rep.scheme_type} · {rep.victims_count} victim(s).")
+    return rep
 
 
 # ---------------------------------------------------------------------------

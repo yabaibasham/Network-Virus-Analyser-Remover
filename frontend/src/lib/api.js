@@ -34,3 +34,29 @@ export const fetchIncidents = (limit = 50) =>
   api.get(`/incidents?limit=${limit}`).then((r) => r.data);
 export const updateIncidentStatus = (id, status) =>
   api.post(`/incidents/${id}/status`, { status }).then((r) => r.data);
+
+// Network topology
+export const fetchTopology = () =>
+  api.get("/network/topology").then((r) => r.data);
+
+// Remediation
+export const remediateDevice = (id) =>
+  api.post(`/devices/${id}/remediate`).then((r) => r.data);
+export const fetchRemediationJobs = (limit = 25) =>
+  api.get(`/remediation/jobs?limit=${limit}`).then((r) => r.data);
+
+// Community Watch
+export const fetchCommunityAlerts = (limit = 100) =>
+  api.get(`/community/alerts?limit=${limit}`).then((r) => r.data);
+export const createCommunityAlert = (payload) =>
+  api.post("/community/alerts", payload).then((r) => r.data);
+export const corroborateAlert = (id) =>
+  api.post(`/community/alerts/${id}/corroborate`).then((r) => r.data);
+export const fetchBlocklist = () =>
+  api.get("/community/blocklist").then((r) => r.data);
+
+// Fraud board
+export const fetchFraudReports = (limit = 50) =>
+  api.get(`/community/fraud-reports?limit=${limit}`).then((r) => r.data);
+export const submitFraudReport = (payload) =>
+  api.post("/community/fraud-reports", payload).then((r) => r.data);

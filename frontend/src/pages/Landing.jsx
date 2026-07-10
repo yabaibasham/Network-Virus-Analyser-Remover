@@ -14,6 +14,8 @@ import {
   Zap,
   Layers,
   Sparkles,
+  Network,
+  Users,
 } from "lucide-react";
 import { fetchStats } from "@/lib/api";
 
@@ -37,6 +39,16 @@ const PILLARS = [
     Icon: MapPin,
     title: "RECOVERY",
     body: "Flag your own laptop, phone, or Tesla as missing — last-known GPS, accuracy radius, owner-consented recovery checklist. No covert tracking.",
+  },
+  {
+    Icon: Network,
+    title: "LAN / WAN MAP",
+    body: "A live topology of your fleet — gateway, subnets, endpoints and WAN egress. Rogue command-and-control links light up red the moment they appear.",
+  },
+  {
+    Icon: Users,
+    title: "COMMUNITY WATCH",
+    body: "A consent-based neighbourhood feed for scam alerts, a shared blocklist, and authority-ready fraud evidence packets. Protect everyone, surveil no one.",
   },
 ];
 
@@ -157,6 +169,8 @@ export default function Landing() {
               <Metric label="MISSING" value={stats?.devices_missing ?? "—"} accent="#FFCC00" />
               <Metric label="SCANS" value={stats?.scans_performed ?? "—"} />
               <Metric label="INCIDENTS" value={stats?.open_incidents ?? "—"} accent="#00F5A0" />
+              <Metric label="WATCH ALERTS" value={stats?.community_alerts ?? "—"} accent="#FFCC00" />
+              <Metric label="BLOCKLIST" value={stats?.blocklist_size ?? "—"} accent="#FF3B30" />
               <Metric
                 label="COVERAGE"
                 value={stats ? `${stats.surface_coverage_pct}%` : "—"}
@@ -180,7 +194,7 @@ export default function Landing() {
       <section id="pillars" className="border-b border-[#222]">
         <div className="max-w-7xl mx-auto px-6 py-20">
           <div className="text-[11px] font-mono uppercase tracking-[0.3em] text-[#666] mb-3">
-            // 04 CAPABILITIES
+            // 06 CAPABILITIES
           </div>
           <h2 className="font-display font-bold tracking-tight text-3xl md:text-4xl uppercase max-w-2xl">
             Built for the analyst who actually opens the laptop at 3am.

@@ -97,6 +97,36 @@ body {
 .mem-block { transition: transform 0.08s ease, opacity 0.08s ease; }
 .mem-block:hover { transform: scale(1.18); }
 
+/* Network map link flow */
+@keyframes dashmove { to { stroke-dashoffset: -1000; } }
+.link-flow { stroke-dasharray: 3 7; animation: dashmove 18s linear infinite; }
+.link-hostile { stroke-dasharray: 6 4; animation: dashmove 1.1s linear infinite; }
+
+/* Radar sweep decoration */
+@keyframes radar-rot { to { transform: rotate(360deg); } }
+.radar-sweep {
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.5;
+  background: conic-gradient(from 0deg, rgba(0,245,160,0.06), rgba(0,245,160,0.0) 30%);
+  animation: radar-rot 9s linear infinite;
+  transform-origin: center;
+}
+
+/* Soft pulse for threats / active nodes */
+@keyframes soft-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.pulse-soft { animation: soft-pulse 1.5s ease-in-out infinite; }
+
+/* Endpoint hover highlight */
+.net-endpoint circle { transition: filter 0.15s ease; }
+.net-endpoint:hover circle { filter: drop-shadow(0 0 6px currentColor); }
+
+/* Panel entrance */
+@keyframes fade-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.fade-up { animation: fade-up 0.4s ease both; }
+
 @layer base {
   :root {
     --background: 0 0% 2%;
