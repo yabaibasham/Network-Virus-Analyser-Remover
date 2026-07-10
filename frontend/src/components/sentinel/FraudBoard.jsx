@@ -76,10 +76,31 @@ export default function FraudBoard() {
 
   function copyPacket() {
     if (!packet?.evidence_packet) return;
-    navigator.clipboard.writeText(packet.evidence_packet);
-    setCopied(true);
-    toast.success("Evidence packet copied");
-    setTimeout(() => setCopied(false), 1600);
+    const text = packet.evidence_packet;
+    const done = () => {
+      setCopied(true);
+      toast.success("Evidence packet copied");
+      setTimeout(() => setCopied(false), 1600);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+          done();
+        } catch {
+          toast.error("Clipboard blocked — select the packet below to copy manually");
+        }
+      });
+    } else {
+      toast.error("Clipboard unavailable — select the packet below to copy manually");
+    }
   }
 
   return (
