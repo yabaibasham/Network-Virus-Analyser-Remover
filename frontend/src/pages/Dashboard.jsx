@@ -6,28 +6,34 @@ import FleetGrid from "@/components/sentinel/FleetGrid";
 import ScannerWidget from "@/components/sentinel/ScannerWidget";
 import ThreatLog from "@/components/sentinel/ThreatLog";
 import DeviceDetailSheet from "@/components/sentinel/DeviceDetailSheet";
+import RecoveryPanel from "@/components/sentinel/RecoveryPanel";
+import IncidentsPanel from "@/components/sentinel/IncidentsPanel";
 import {
   fetchDevices,
   fetchThreatLogs,
   fetchStats,
+  fetchIncidents,
 } from "@/lib/api";
 
 export default function Dashboard() {
   const [devices, setDevices] = useState([]);
   const [logs, setLogs] = useState([]);
   const [stats, setStats] = useState(null);
+  const [incidents, setIncidents] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const [d, l, s] = await Promise.all([
+    const [d, l, s, inc] = await Promise.all([
       fetchDevices(),
       fetchThreatLogs(80),
       fetchStats(),
+      fetchIncidents(50),
     ]);
     setDevices(d);
     setLogs(l);
     setStats(s);
+    setIncidents(inc);
     setLoading(false);
   }, []);
 
@@ -53,14 +59,16 @@ export default function Dashboard() {
               loading={loading}
               onSelect={setSelectedId}
             />
+            <IncidentsPanel incidents={incidents} onChanged={refresh} />
             <ThreatLog logs={logs} />
           </section>
           <section className="lg:col-span-4 flex flex-col gap-3 min-w-0">
-            <ScannerWidget onScanDone={refresh} />
+            <ScannerWidget onScanDone={refresh} vtEnabled={stats?.vt_enabled} />
+            <RecoveryPanel devices={devices} onChanged={refresh} />
           </section>
         </div>
         <footer className="border-t border-[#222] px-4 py-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.2em] text-[#555]">
-          <span>SENTINELGRID v0.1 // UNIVERSAL ENDPOINT THREAT INTELLIGENCE</span>
+          <span>SENTINELGRID v0.2 // UNIVERSAL ENDPOINT THREAT INTELLIGENCE</span>
           <span className="flex items-center gap-2">
             <span className="status-dot" style={{ background: "#00F5A0" }} />
             UPLINK NOMINAL

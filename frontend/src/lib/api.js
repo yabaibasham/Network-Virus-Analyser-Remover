@@ -24,3 +24,13 @@ export const uploadScan = (file) => {
 };
 export const fetchScans = (limit = 25) =>
   api.get(`/scans?limit=${limit}`).then((r) => r.data);
+
+export const reportMissing = (id, payload) =>
+  api.post(`/devices/${id}/report-missing`, payload).then((r) => r.data);
+export const markRecovered = (id) =>
+  api.post(`/devices/${id}/mark-recovered`).then((r) => r.data);
+
+export const fetchIncidents = (limit = 50) =>
+  api.get(`/incidents?limit=${limit}`).then((r) => r.data);
+export const updateIncidentStatus = (id, status) =>
+  api.post(`/incidents/${id}/status`, { status }).then((r) => r.data);
