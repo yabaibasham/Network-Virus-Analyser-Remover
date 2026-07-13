@@ -73,20 +73,38 @@ Each router exposes `router = APIRouter()`; `server.py` mounts them under `/api`
 - `/api/stats` exposes `circl_enabled`, `clamav_status`, `intel_engines`.
 - Scanner UI shows a "THREAT INTEL" panel (CIRCL / ClamAV / VT) in the verdict.
 
+## Authentication & security (added after security audit)
+- **Emergent-managed Google login**. Backend `routers/auth.py`: `POST /api/auth/session`
+  (exchanges Google `session_id` for user + `session_token`, sets httpOnly secure
+  sameSite=none cookie, 7-day expiry), `GET /api/auth/me`, `POST /api/auth/logout`.
+  `get_current_user` accepts cookie OR `Authorization: Bearer`.
+- **Route gating** in `server.py`: `auth` + `stats` routers are public; devices, incidents,
+  scanner, network, community, fraud, remediation are wrapped with
+  `Depends(get_current_user)` at include level (no per-endpoint drift). Unauth → 401.
+- **Frontend**: `/login` (Google button), `AuthCallback` (session_id handling), `ProtectedRoute`
+  (guards `/dashboard`), HeaderBar sign-out, axios `withCredentials: true`.
+- **SEC-003**: `/api/scan/upload` streams to disk in 1MB chunks, **1GB cap** (413 on overflow),
+  temp file cleaned in finally. ClamAV scans the temp path directly.
+- Security audit findings SEC-001 (unauth privileged actions), SEC-002 (unauth PII read),
+  SEC-003 (upload/scan abuse) → **REMEDIATED & verified** (iteration_2.json).
+- Remaining P3 hardening (not blocking): CORS `*` (env-configurable; same-origin so low impact),
+  exception-type strings in some error responses.
+
 ## Testing status
-- iteration_1.json: Backend 12/12 pytest PASS. Frontend E2E 100%.
-- Post-refactor + intel engines: 12/12 pytest re-run PASS (multiple times).
-  EICAR upload → MALICIOUS via ClamAV; CIRCL returns real govCERT data.
-- Fixed: FraudBoard copy-packet clipboard promise (try/catch + execCommand fallback).
+- iteration_2.json: **39/39 backend pytest PASS** (+1 intentional skip) with auth; frontend 100%.
+  Verified: public 200 unauth; 9 protected GETs 401→200; 6 mutating POSTs 401 unauth;
+  login/redirect/cookie/sign-out flow; EICAR upload → malicious (ClamAV); clean → clean.
+- Test session seeded: Bearer `test_session_auditor_01` (see /app/memory/test_credentials.md).
 
 ## Roadmap / backlog
-- DONE: Refactor server.py into routers.
-- DONE: Sum blocklist confirmations across duplicate indicators + escalate severity.
-- DONE: Offset pagination (`skip` + `limit`) on all feed endpoints.
-- DONE: Real threat intel — CIRCL hashlookup (keyless) + ClamAV (self-healing).
+- DONE: Router refactor; blocklist confirmation-summing + pagination; CIRCL + ClamAV intel;
+  Google auth + route gating + 1GB streaming uploads (security remediation).
+- P1: **Multi-tenancy** (orgs: councils / agencies / funds isolated) + **roles** (owner/analyst/viewer)
+  — foundation for the contractor/billing business model.
+- P1: **Stripe billing** (per-seat or per-endpoint) once orgs exist.
 - P1: Wire real VirusTotal when user supplies VT_API_KEY (backend already supports it).
-- P2: abuse.ch URLhaus / Google Safe Browsing for real *URL* intel (need free keys).
-- P2: Bake ClamAV into the container image for guaranteed availability on deploy.
+- P2: abuse.ch URLhaus / Google Safe Browsing for real URL intel (need free keys).
+- P2: Bake ClamAV into the container image; tighten CORS to explicit origin allowlist.
 - P2: Pagination for alerts/logs/incidents for real-scale deployments.
 - P3: Auth (JWT or Emergent Google) if multi-user / per-owner fleets are needed.
 - P3: Persist remediation "in-progress" state server-side for crash resilience.
