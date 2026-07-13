@@ -10,9 +10,12 @@ from events import _log_event
 router = APIRouter()
 
 
+SEV_RANK = {"info": 0, "warning": 1, "danger": 2, "critical": 3}
+
+
 @router.get("/community/alerts", response_model=List[CommunityAlert])
-async def list_community_alerts(limit: int = 100):
-    docs = await db.community_alerts.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+async def list_community_alerts(limit: int = 100, skip: int = 0):
+    docs = await db.community_alerts.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return [CommunityAlert(**d) for d in docs]
 
 
@@ -56,7 +59,20 @@ async def community_blocklist():
                     "kind": alert.kind,
                     "severity": alert.severity,
                     "confirmations": alert.corroborations,
+                    "reports": 1,
                     "first_seen": alert.created_at,
                 }
-    entries = sorted(seen.values(), key=lambda e: e["confirmations"], reverse=True)
+            else:
+                e = seen[key]
+                # Sum corroborations across every alert that named this indicator
+                e["confirmations"] += alert.corroborations
+                e["reports"] += 1
+                # Escalate to the highest severity seen (and adopt that alert's kind)
+                if SEV_RANK[alert.severity] > SEV_RANK[e["severity"]]:
+                    e["severity"] = alert.severity
+                    e["kind"] = alert.kind
+                # Keep the earliest first-seen timestamp
+                if alert.created_at < e["first_seen"]:
+                    e["first_seen"] = alert.created_at
+    entries = sorted(seen.values(), key=lambda e: (e["confirmations"], e["reports"]), reverse=True)
     return {"count": len(entries), "entries": entries, "generated_at": now_iso()}

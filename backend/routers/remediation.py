@@ -60,6 +60,6 @@ async def remediate_device(device_id: str):
 
 
 @router.get("/remediation/jobs", response_model=List[RemediationJob])
-async def list_remediation_jobs(limit: int = 25):
-    docs = await db.remediation_jobs.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+async def list_remediation_jobs(limit: int = 25, skip: int = 0):
+    docs = await db.remediation_jobs.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return [RemediationJob(**d) for d in docs]

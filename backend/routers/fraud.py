@@ -54,8 +54,8 @@ def _build_evidence_packet(rep: FraudReport) -> str:
 
 
 @router.get("/community/fraud-reports", response_model=List[FraudReport])
-async def list_fraud_reports(limit: int = 50):
-    docs = await db.fraud_reports.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+async def list_fraud_reports(limit: int = 50, skip: int = 0):
+    docs = await db.fraud_reports.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return [FraudReport(**d) for d in docs]
 
 

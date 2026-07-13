@@ -10,15 +10,15 @@ router = APIRouter()
 
 
 @router.get("/threat-logs", response_model=List[ThreatLog])
-async def list_threat_logs(limit: int = 50):
-    cursor = db.threat_logs.find({}, {"_id": 0}).sort("timestamp", -1).limit(limit)
+async def list_threat_logs(limit: int = 50, skip: int = 0):
+    cursor = db.threat_logs.find({}, {"_id": 0}).sort("timestamp", -1).skip(skip).limit(limit)
     docs = await cursor.to_list(limit)
     return [ThreatLog(**d) for d in docs]
 
 
 @router.get("/incidents", response_model=List[Incident])
-async def list_incidents(limit: int = 50):
-    docs = await db.incidents.find({}, {"_id": 0}).sort("updated_at", -1).limit(limit).to_list(limit)
+async def list_incidents(limit: int = 50, skip: int = 0):
+    docs = await db.incidents.find({}, {"_id": 0}).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
     return [Incident(**d) for d in docs]
 
 

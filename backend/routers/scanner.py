@@ -204,6 +204,6 @@ async def scan_upload(file: UploadFile = File(...)):
 
 
 @router.get("/scans", response_model=List[ScanResult])
-async def list_scans(limit: int = 25):
-    docs = await db.scan_results.find({}, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
+async def list_scans(limit: int = 25, skip: int = 0):
+    docs = await db.scan_results.find({}, {"_id": 0}).sort("timestamp", -1).skip(skip).limit(limit).to_list(limit)
     return [ScanResult(**d) for d in docs]
