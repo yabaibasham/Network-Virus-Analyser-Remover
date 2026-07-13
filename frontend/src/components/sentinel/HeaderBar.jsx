@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { ShieldAlert, Globe2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ShieldAlert, Globe2, LogOut } from "lucide-react";
+import { logout } from "@/lib/api";
 
 function useClock() {
   const [t, setT] = useState(new Date());
@@ -10,10 +12,20 @@ function useClock() {
   return t;
 }
 
-export default function HeaderBar({ logs = [], stats }) {
+export default function HeaderBar({ logs = [], stats, user }) {
   const clock = useClock();
+  const navigate = useNavigate();
   const top = logs.slice(0, 12);
   const utc = clock.toISOString().replace("T", " ").slice(0, 19);
+
+  const signOut = async () => {
+    try {
+      await logout();
+    } catch (e) {
+      /* ignore */
+    }
+    navigate("/login", { replace: true });
+  };
 
   return (
     <header className="border-b border-[#222] bg-[#070707] z-10" data-testid="header-bar">
@@ -54,6 +66,36 @@ export default function HeaderBar({ logs = [], stats }) {
               </span>
             </>
           )}
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {user && (
+            <div className="hidden sm:flex items-center gap-2" data-testid="header-user">
+              {user.picture ? (
+                <img
+                  src={user.picture}
+                  alt=""
+                  className="w-6 h-6 rounded-full border border-[#333]"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="w-6 h-6 rounded-full bg-[#1a1a1a] border border-[#333] flex items-center justify-center font-mono text-[10px] text-[#888]">
+                  {(user.name || user.email || "?").slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <span className="font-mono text-[11px] text-[#aaa] max-w-[140px] truncate">
+                {user.name || user.email}
+              </span>
+            </div>
+          )}
+          <button
+            data-testid="sign-out-btn"
+            onClick={signOut}
+            title="Sign out"
+            className="flex items-center gap-1.5 border border-[#333] hover:border-white hover:bg-[#141414] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#888] hover:text-white transition-colors"
+          >
+            <LogOut size={13} strokeWidth={1.5} />
+            <span className="hidden md:inline">Sign out</span>
+          </button>
         </div>
       </div>
       {/* Marquee */}

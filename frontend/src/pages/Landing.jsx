@@ -88,7 +88,7 @@ export default function Landing() {
             </div>
           </div>
           <Link
-            to="/dashboard"
+            to="/login"
             data-testid="nav-launch-console"
             className="bg-white text-black hover:bg-[#00F5A0] transition-colors px-5 py-2.5 font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-2"
           >
@@ -123,7 +123,7 @@ export default function Landing() {
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
-                to="/dashboard"
+                to="/login"
                 data-testid="hero-cta-launch"
                 className="bg-white text-black hover:bg-[#00F5A0] transition-colors px-6 py-3.5 font-mono text-xs uppercase tracking-[0.25em] flex items-center gap-2"
               >

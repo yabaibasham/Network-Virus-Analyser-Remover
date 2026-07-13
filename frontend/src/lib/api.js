@@ -3,7 +3,13 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
-export const api = axios.create({ baseURL: API, timeout: 60000 });
+export const api = axios.create({ baseURL: API, timeout: 60000, withCredentials: true });
+
+// Auth
+export const postSession = (sessionId) =>
+  api.post("/auth/session", {}, { headers: { "X-Session-ID": sessionId } }).then((r) => r.data);
+export const fetchMe = () => api.get("/auth/me").then((r) => r.data);
+export const logout = () => api.post("/auth/logout").then((r) => r.data);
 
 export const fetchDevices = () => api.get("/devices").then((r) => r.data);
 export const fetchDevice = (id) => api.get(`/devices/${id}`).then((r) => r.data);

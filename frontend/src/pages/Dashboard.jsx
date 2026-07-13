@@ -17,6 +17,7 @@ import {
   fetchThreatLogs,
   fetchStats,
   fetchIncidents,
+  fetchMe,
 } from "@/lib/api";
 
 const VIEW_TITLE = {
@@ -34,6 +35,7 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("overview");
+  const [user, setUser] = useState(null);
 
   const refresh = useCallback(async () => {
     const [d, l, s, inc] = await Promise.all([
@@ -50,6 +52,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    fetchMe().then(setUser).catch(() => {});
     refresh();
     const t = setInterval(refresh, 12000);
     return () => clearInterval(t);
@@ -62,7 +65,7 @@ export default function Dashboard() {
     >
       <Sidebar view={view} setView={setView} />
       <main className="flex-1 flex flex-col min-w-0">
-        <HeaderBar logs={logs} stats={stats} />
+        <HeaderBar logs={logs} stats={stats} user={user} />
         <StatsBar stats={stats} />
 
         <div className="flex items-center gap-3 px-4 py-2 border-b border-[#222] bg-[#0a0a0a]">

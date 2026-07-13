@@ -18,7 +18,7 @@ import tempfile
 from typing import List, Optional, Dict, Any
 
 import httpx
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, HTTPException
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
@@ -250,7 +250,7 @@ async def bootstrap_clamav():
         log.warning("ClamAV bootstrap skipped: %s", e)
 
 
-async def _clamav_scan(raw: bytes) -> Dict[str, Any]:
+async def _clamav_scan_path(path: str) -> Dict[str, Any]:
     binary = _clamscan_bin()
     if not binary:
         return {"status": "unavailable", "engine": "ClamAV",
@@ -258,11 +258,7 @@ async def _clamav_scan(raw: bytes) -> Dict[str, Any]:
     if not _clam_db_ready():
         return {"status": "db_updating", "engine": "ClamAV",
                 "note": "Signature database is still downloading; try again shortly."}
-    path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as tf:
-            tf.write(raw)
-            path = tf.name
         proc = await asyncio.create_subprocess_exec(
             binary, "--no-summary", "--stdout", path,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
@@ -280,12 +276,6 @@ async def _clamav_scan(raw: bytes) -> Dict[str, Any]:
     except Exception as e:
         log.warning("ClamAV scan failed: %s", e)
         return {"status": f"exception:{type(e).__name__}", "engine": "ClamAV"}
-    finally:
-        if path and os.path.exists(path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
 
 
 def _hash_for_lookup(req: ScanRequest) -> Optional[str]:
@@ -296,12 +286,12 @@ def _hash_for_lookup(req: ScanRequest) -> Optional[str]:
     return None
 
 
-async def _perform_scan(req: ScanRequest, raw: Optional[bytes] = None) -> ScanResult:
+async def _perform_scan(req: ScanRequest, clam_path: Optional[str] = None) -> ScanResult:
     local = _local_ioc_scan(req.target_type, req.target)
     ai = await _ai_heuristic(req.target_type, req.target, local)
     vt = await _virustotal_lookup(req.target_type, req.target)
     circl = await _circl_hashlookup(_hash_for_lookup(req))
-    clam = await _clamav_scan(raw) if raw is not None else None
+    clam = await _clamav_scan_path(clam_path) if clam_path else None
 
     score = local["score"] + ai["verdict_score_adjust"]
     iocs = list(local["iocs"])
@@ -359,15 +349,40 @@ async def run_scan(req: ScanRequest):
 
 @router.post("/scan/upload", response_model=ScanResult)
 async def scan_upload(file: UploadFile = File(...)):
-    raw = await file.read()
-    sha = hashlib.sha256(raw).hexdigest()
+    max_bytes = 1024 * 1024 * 1024  # 1 GB cap
+    h = hashlib.sha256()
+    total = 0
+    head = b""
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".bin")
     try:
-        text_sample = raw[:6000].decode("utf-8", errors="ignore")
-    except Exception:
-        text_sample = ""
-    combined = f"sha256={sha}\nfilename={file.filename}\n--snippet--\n{text_sample}"
-    req = ScanRequest(target_type="file_text", target=combined, filename=file.filename, file_sha256=sha)
-    return await _perform_scan(req, raw=raw)
+        while True:
+            chunk = await file.read(1024 * 1024)  # stream 1 MB at a time
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise HTTPException(status_code=413, detail="File exceeds the 1 GB limit")
+            h.update(chunk)
+            if len(head) < 6000:
+                head += chunk[: 6000 - len(head)]
+            tmp.write(chunk)
+        tmp.flush()
+        tmp.close()
+        sha = h.hexdigest()
+        text_sample = head.decode("utf-8", errors="ignore")
+        combined = f"sha256={sha}\nfilename={file.filename}\n--snippet--\n{text_sample}"
+        req = ScanRequest(target_type="file_text", target=combined, filename=file.filename, file_sha256=sha)
+        return await _perform_scan(req, clam_path=tmp.name)
+    finally:
+        try:
+            tmp.close()
+        except Exception:
+            pass
+        if os.path.exists(tmp.name):
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
 
 
 @router.get("/scans", response_model=List[ScanResult])

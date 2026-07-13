@@ -14,8 +14,18 @@ if not BASE_URL:
 API = f"{BASE_URL}/api"
 
 
+TEST_TOKEN = "test_session_auditor_01"
+
+
 @pytest.fixture(scope="session")
 def s():
+    sess = requests.Session()
+    sess.headers.update({"Authorization": f"Bearer {TEST_TOKEN}"})
+    return sess
+
+
+@pytest.fixture(scope="session")
+def anon():
     return requests.Session()
 
 

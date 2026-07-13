@@ -187,3 +187,12 @@ class RemediationJob(BaseModel):
     threats_removed: int = 0
     steps: List[Dict[str, Any]] = []
     summary: str = ""
+
+
+class User(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    user_id: str
+    email: str
+    name: str = ""
+    picture: str = ""
+    created_at: Optional[str] = None
