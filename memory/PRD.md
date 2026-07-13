@@ -53,13 +53,21 @@ authorised Remediation Console.
 devices, threat_logs, incidents, scan_results, community_alerts, fraud_reports,
 remediation_jobs. Seeded on startup when empty (10 devices, 6 logs, 5 community alerts).
 
+## Backend structure (refactored)
+`server.py` is now a slim assembler. Logic split into:
+`database.py` (mongo client, env, now_iso), `models.py` (all Pydantic models),
+`events.py` (_log_event + incident correlation), `seed.py` (seed data + ensure_seed),
+and `routers/` = stats, devices, incidents, scanner, network, community, fraud, remediation.
+Each router exposes `router = APIRouter()`; `server.py` mounts them under `/api`.
+
 ## Testing status
 - iteration_1.json: Backend 12/12 pytest PASS. Frontend E2E 100%.
+- Post-refactor: 12/12 pytest re-run PASS; all endpoints behaviour-identical.
 - Fixed: FraudBoard copy-packet unhandled clipboard promise (now try/catch + execCommand fallback).
 
 ## Roadmap / backlog
 - P1: Wire real VirusTotal when user supplies VT_API_KEY (backend already supports it).
-- P2: Refactor server.py (>1100 lines) into routers: devices/network/community/fraud/remediation.
+- DONE: Refactor server.py into routers (devices/network/community/fraud/remediation/incidents/scanner/stats).
 - P2: Sum blocklist confirmations across duplicate indicators (currently first-alert only).
 - P2: Pagination for alerts/logs/incidents for real-scale deployments.
 - P3: Auth (JWT or Emergent Google) if multi-user / per-owner fleets are needed.
