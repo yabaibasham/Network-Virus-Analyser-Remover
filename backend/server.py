@@ -4,12 +4,14 @@ Universal endpoint threat intelligence, LAN/WAN topology, community watch,
 fraud reporting and authorised remediation. Route logic lives in ./routers/*.
 """
 import os
+import asyncio
 
 from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
 from database import client
 from seed import ensure_seed
+from routers.scanner import bootstrap_clamav
 from routers import (
     stats,
     devices,
@@ -40,6 +42,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     await ensure_seed()
+    asyncio.create_task(bootstrap_clamav())
 
 
 @app.on_event("shutdown")

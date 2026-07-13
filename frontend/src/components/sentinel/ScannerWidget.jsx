@@ -64,6 +64,8 @@ function VerdictPanel({ result }) {
         </ul>
       </div>
 
+      <ThreatIntel result={result} />
+
       <div className="px-3 py-2">
         <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#666] mb-1">
           RECOMMENDED ACTIONS
@@ -75,6 +77,58 @@ function VerdictPanel({ result }) {
             </li>
           ))}
         </ul>
+      </div>
+    </div>
+  );
+}
+
+function IntelRow({ label, verdict, tone }) {
+  const c =
+    tone === "bad" ? "#FF3B30" : tone === "good" ? "#00F5A0" : tone === "warn" ? "#FFCC00" : "#888";
+  return (
+    <div className="flex items-center justify-between font-mono text-[11px]" data-testid={`intel-${label}`}>
+      <span className="text-[#888] uppercase">{label}</span>
+      <span style={{ color: c }}>{verdict}</span>
+    </div>
+  );
+}
+
+function ThreatIntel({ result }) {
+  const rows = [];
+  const clam = result.clamav_summary;
+  if (clam) {
+    if (clam.status === "scanned")
+      rows.push({ label: "ClamAV", verdict: clam.infected ? `signature: ${clam.signature}` : "no signature match", tone: clam.infected ? "bad" : "good" });
+    else if (clam.status === "db_updating")
+      rows.push({ label: "ClamAV", verdict: "signatures updating…", tone: "warn" });
+    else rows.push({ label: "ClamAV", verdict: "offline", tone: "muted" });
+  }
+  const circl = result.circl_summary;
+  if (circl) {
+    if (circl.known_malicious)
+      rows.push({ label: "CIRCL govCERT", verdict: "known malicious", tone: "bad" });
+    else if (circl.status === "known")
+      rows.push({ label: "CIRCL govCERT", verdict: `known-good · trust ${circl.trust ?? "?"}`, tone: "good" });
+    else if (circl.status === "unknown")
+      rows.push({ label: "CIRCL govCERT", verdict: "unknown hash", tone: "muted" });
+    else rows.push({ label: "CIRCL govCERT", verdict: String(circl.status || "n/a"), tone: "muted" });
+  }
+  const vt = result.vt_summary;
+  if (vt) {
+    if (vt.status === "indexed")
+      rows.push({ label: "VirusTotal", verdict: `${vt.engines_malicious}/${vt.engines_total} malicious`, tone: vt.engines_malicious ? "bad" : "good" });
+    else rows.push({ label: "VirusTotal", verdict: String(vt.status), tone: "muted" });
+  }
+  if (rows.length === 0) return null;
+  return (
+    <div className="px-3 py-2 border-b border-[#222]" data-testid="scan-threat-intel">
+      <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#666] mb-1.5">
+        THREAT INTEL
+      </div>
+      <div className="space-y-1">
+        {rows.map((r, i) => (
+          <IntelRow key={i} {...r} />
+        ))}
       </div>
     </div>
   );
@@ -92,7 +146,8 @@ function ProgressLine({ active }) {
       </div>
       <div className="mt-2 text-[#666]">
         ▸ Lexical IOC pass<br />
-        ▸ Reputation surface<br />
+        ▸ CIRCL hashlookup (govCERT-LU)<br />
+        ▸ ClamAV signature engine<br />
         ▸ AI heuristic (claude-sonnet-4-6)<br />
         ▸ Composite verdict
       </div>

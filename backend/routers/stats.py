@@ -3,6 +3,7 @@ from fastapi import APIRouter
 
 from database import db, now_iso, VT_API_KEY
 from routers.community import community_blocklist
+from routers.scanner import clamav_status
 
 router = APIRouter()
 
@@ -39,6 +40,12 @@ async def stats():
         "remediations_run": remediations,
         "surface_coverage_pct": coverage,
         "vt_enabled": bool(VT_API_KEY),
+        "circl_enabled": True,
+        "clamav_status": clamav_status(),
+        "intel_engines": [
+            "CIRCL hashlookup (govCERT-LU)",
+            f"ClamAV ({clamav_status()})",
+        ] + (["VirusTotal"] if VT_API_KEY else []),
     }
 
 

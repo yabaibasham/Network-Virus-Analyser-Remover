@@ -181,6 +181,11 @@ export default function Landing() {
                 value={stats?.vt_enabled ? "ONLINE" : "OFFLINE"}
                 accent={stats?.vt_enabled ? "#00F5A0" : "#555"}
               />
+              <Metric
+                label="INTEL ENGINES"
+                value={stats?.intel_engines ? stats.intel_engines.length : "—"}
+                accent="#00F5A0"
+              />
             </div>
             <div className="mt-5 font-mono text-[10px] text-[#666] leading-relaxed">
               <span className="text-white">root@sentinel:~$</span> deep-scan --all

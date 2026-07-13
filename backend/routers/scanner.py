@@ -1,9 +1,20 @@
-"""Heuristic scanner: static IOC pass + AI triage + optional VirusTotal."""
+"""Heuristic scanner: static IOC pass + AI triage + real threat intel.
+
+Threat-intel engines:
+  - CIRCL hashlookup (govCERT-LU) — keyless file/hash reputation
+  - ClamAV — local open-source signature engine (uploaded file bytes)
+  - VirusTotal — optional, enabled only when VT_API_KEY is present
+"""
+import os
 import re
+import glob
 import json
 import uuid
 import base64
+import shutil
 import hashlib
+import asyncio
+import tempfile
 from typing import List, Optional, Dict, Any
 
 import httpx
@@ -16,6 +27,12 @@ from models import ScanRequest, ScanResult
 from events import _log_event
 
 router = APIRouter()
+
+CLAM_DB_DIR = "/var/lib/clamav"
+
+
+def _clamscan_bin() -> Optional[str]:
+    return shutil.which("clamscan")
 
 SUSPICIOUS_TLDS = {".ru", ".tk", ".top", ".xyz", ".click", ".zip", ".country"}
 SUSPICIOUS_TERMS = [
@@ -159,15 +176,157 @@ def _verdict_from_score(score: int) -> str:
     return "clean"
 
 
-@router.post("/scan", response_model=ScanResult)
-async def run_scan(req: ScanRequest):
+# --- CIRCL hashlookup (govCERT-LU) — keyless file/hash reputation ---
+async def _circl_hashlookup(h: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not h:
+        return None
+    h = h.strip()
+    algo = {32: "md5", 40: "sha1", 64: "sha256"}.get(len(h))
+    if not algo or not re.fullmatch(r"[0-9a-fA-F]+", h):
+        return {"status": "unsupported_hash", "source": "CIRCL hashlookup"}
+    try:
+        async with httpx.AsyncClient(timeout=12) as c:
+            r = await c.get(
+                f"https://hashlookup.circl.lu/lookup/{algo}/{h}",
+                headers={"accept": "application/json"},
+            )
+        if r.status_code == 404:
+            return {"status": "unknown", "source": "CIRCL hashlookup (govCERT-LU)",
+                    "note": "Hash not in any known dataset (NSRL / distros / malware feeds)."}
+        if r.status_code != 200:
+            return {"status": f"error_{r.status_code}", "source": "CIRCL hashlookup"}
+        d = r.json()
+        trust = d.get("hashlookup:trust")
+        known_malicious = bool(
+            d.get("KnownMalicious") or d.get("malicious")
+            or (isinstance(trust, int) and trust <= 20)
+        )
+        return {
+            "status": "known",
+            "source": "CIRCL hashlookup (govCERT-LU)",
+            "filename": d.get("FileName") or d.get("filename") or d.get("SHA-256"),
+            "trust": trust,
+            "known_malicious": known_malicious,
+            "dataset": d.get("source") or d.get("db") or "NSRL / distro / community",
+        }
+    except Exception as e:
+        log.warning("CIRCL lookup failed: %s", e)
+        return {"status": f"exception:{type(e).__name__}", "source": "CIRCL hashlookup"}
+
+
+# --- ClamAV — local open-source signature scan of uploaded bytes ---
+def _clam_db_ready() -> bool:
+    return bool(glob.glob(f"{CLAM_DB_DIR}/*.cvd") or glob.glob(f"{CLAM_DB_DIR}/*.cld"))
+
+
+def clamav_status() -> str:
+    if not _clamscan_bin():
+        return "unavailable"
+    return "ready" if _clam_db_ready() else "updating"
+
+
+async def bootstrap_clamav():
+    """Self-heal ClamAV on cold start (runtime apt installs don't persist).
+
+    Non-blocking best-effort: installs the engine and/or refreshes signatures in
+    the background. The scanner degrades gracefully while this runs.
+    """
+    try:
+        if _clamscan_bin() and _clam_db_ready():
+            return
+        if not _clamscan_bin():
+            log.info("ClamAV: bootstrapping engine + signatures in background …")
+            cmd = ("apt-get install -y clamav clamav-freshclam "
+                   "&& (systemctl stop clamav-freshclam 2>/dev/null; freshclam)")
+        else:
+            log.info("ClamAV: refreshing signature database in background …")
+            cmd = "systemctl stop clamav-freshclam 2>/dev/null; freshclam"
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.communicate()
+        log.info("ClamAV bootstrap finished · status=%s", clamav_status())
+    except Exception as e:
+        log.warning("ClamAV bootstrap skipped: %s", e)
+
+
+async def _clamav_scan(raw: bytes) -> Dict[str, Any]:
+    binary = _clamscan_bin()
+    if not binary:
+        return {"status": "unavailable", "engine": "ClamAV",
+                "note": "Signature engine bootstrapping; unavailable right now."}
+    if not _clam_db_ready():
+        return {"status": "db_updating", "engine": "ClamAV",
+                "note": "Signature database is still downloading; try again shortly."}
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as tf:
+            tf.write(raw)
+            path = tf.name
+        proc = await asyncio.create_subprocess_exec(
+            binary, "--no-summary", "--stdout", path,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        out, _ = await proc.communicate()
+        text = out.decode(errors="ignore").strip()
+        if proc.returncode == 1:
+            sig = "malware"
+            if ":" in text:
+                sig = text.split(":", 1)[1].replace("FOUND", "").strip() or sig
+            return {"status": "scanned", "engine": "ClamAV", "infected": True, "signature": sig}
+        if proc.returncode == 0:
+            return {"status": "scanned", "engine": "ClamAV", "infected": False}
+        return {"status": "error", "engine": "ClamAV", "detail": text[:160]}
+    except Exception as e:
+        log.warning("ClamAV scan failed: %s", e)
+        return {"status": f"exception:{type(e).__name__}", "engine": "ClamAV"}
+    finally:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+def _hash_for_lookup(req: ScanRequest) -> Optional[str]:
+    if req.file_sha256:
+        return req.file_sha256
+    if req.target_type == "file_hash":
+        return req.target.strip()
+    return None
+
+
+async def _perform_scan(req: ScanRequest, raw: Optional[bytes] = None) -> ScanResult:
     local = _local_ioc_scan(req.target_type, req.target)
     ai = await _ai_heuristic(req.target_type, req.target, local)
     vt = await _virustotal_lookup(req.target_type, req.target)
+    circl = await _circl_hashlookup(_hash_for_lookup(req))
+    clam = await _clamav_scan(raw) if raw is not None else None
 
     score = local["score"] + ai["verdict_score_adjust"]
+    iocs = list(local["iocs"])
+    categories = list(local["categories"])
+
     if vt and vt.get("engines_malicious"):
         score += min(30, int(vt["engines_malicious"]) * 5)
+        iocs.append(f"VirusTotal: {vt['engines_malicious']} engines flagged malicious")
+        categories.append("Threat-Intel")
+
+    if circl:
+        if circl.get("known_malicious"):
+            score = max(score, 90)
+            iocs.append("CIRCL hashlookup: known-malicious file hash")
+            categories.append("Threat-Intel")
+        elif circl.get("status") == "known" and not circl.get("known_malicious"):
+            # A hash the govCERT dataset recognises as legitimate software
+            score = min(score, 10)
+            iocs.append(f"CIRCL hashlookup: known-good file ({circl.get('dataset')})")
+
+    if clam and clam.get("infected"):
+        score = 100
+        iocs.append(f"ClamAV signature match: {clam.get('signature')}")
+        categories.append("Signature-Match")
+
     final_score = max(0, min(100, score))
     verdict = _verdict_from_score(final_score)
 
@@ -177,11 +336,13 @@ async def run_scan(req: ScanRequest):
         filename=req.filename,
         verdict=verdict,  # type: ignore[arg-type]
         risk_score=final_score,
-        iocs=local["iocs"] or ["No static IOCs matched"],
-        categories=local["categories"],
+        iocs=iocs or ["No static IOCs matched"],
+        categories=list(dict.fromkeys(categories)) or ["Unclassified"],
         ai_reasoning=ai["reasoning"],
         recommended_actions=ai["recommended_actions"],
         vt_summary=vt,
+        circl_summary=circl,
+        clamav_summary=clam,
     )
     await db.scan_results.insert_one(result.model_dump())
 
@@ -189,6 +350,11 @@ async def run_scan(req: ScanRequest):
     label = req.filename or req.target
     await _log_event(sev, "SCAN", f"{verdict.upper()} · score {final_score}/100 · {label[:80]}")
     return result
+
+
+@router.post("/scan", response_model=ScanResult)
+async def run_scan(req: ScanRequest):
+    return await _perform_scan(req)
 
 
 @router.post("/scan/upload", response_model=ScanResult)
@@ -200,7 +366,8 @@ async def scan_upload(file: UploadFile = File(...)):
     except Exception:
         text_sample = ""
     combined = f"sha256={sha}\nfilename={file.filename}\n--snippet--\n{text_sample}"
-    return await run_scan(ScanRequest(target_type="file_text", target=combined, filename=file.filename))
+    req = ScanRequest(target_type="file_text", target=combined, filename=file.filename, file_sha256=sha)
+    return await _perform_scan(req, raw=raw)
 
 
 @router.get("/scans", response_model=List[ScanResult])

@@ -84,6 +84,7 @@ class ScanRequest(BaseModel):
     target_type: Literal["url", "file_hash", "file_text"]
     target: str
     filename: Optional[str] = None
+    file_sha256: Optional[str] = None  # set by upload path for hash-intel lookups
 
 
 class ScanResult(BaseModel):
@@ -99,7 +100,9 @@ class ScanResult(BaseModel):
     categories: List[str]
     ai_reasoning: str
     recommended_actions: List[str]
-    vt_summary: Optional[Dict[str, Any]] = None  # virustotal block if available
+    vt_summary: Optional[Dict[str, Any]] = None       # virustotal block if available
+    circl_summary: Optional[Dict[str, Any]] = None    # CIRCL hashlookup (govCERT-LU)
+    clamav_summary: Optional[Dict[str, Any]] = None   # local ClamAV signature scan
 
 
 class DeviceAction(BaseModel):

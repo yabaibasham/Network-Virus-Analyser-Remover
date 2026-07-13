@@ -60,15 +60,33 @@ remediation_jobs. Seeded on startup when empty (10 devices, 6 logs, 5 community 
 and `routers/` = stats, devices, incidents, scanner, network, community, fraud, remediation.
 Each router exposes `router = APIRouter()`; `server.py` mounts them under `/api`.
 
+## Threat-intel engines (scanner)
+- **CIRCL hashlookup** (govCERT-LU) — keyless, hosted, always-on. File/hash reputation
+  (MD5/SHA1/SHA256) vs NIST NSRL + distro + community malware datasets. Known-good
+  caps the score; known-malicious forces a high score.
+- **ClamAV** — local open-source signature engine; scans uploaded file *bytes*
+  (`clamscan`). Self-healing: `bootstrap_clamav()` runs non-blocking on startup to
+  install the engine + refresh signatures (runtime apt installs don't persist across
+  pod restarts), and `clamscan` is resolved dynamically. Degrades gracefully to
+  "updating"/"unavailable". Verified with the EICAR test file.
+- **VirusTotal** — optional; enabled only when `VT_API_KEY` is set.
+- `/api/stats` exposes `circl_enabled`, `clamav_status`, `intel_engines`.
+- Scanner UI shows a "THREAT INTEL" panel (CIRCL / ClamAV / VT) in the verdict.
+
 ## Testing status
 - iteration_1.json: Backend 12/12 pytest PASS. Frontend E2E 100%.
-- Post-refactor: 12/12 pytest re-run PASS; all endpoints behaviour-identical.
-- Fixed: FraudBoard copy-packet unhandled clipboard promise (now try/catch + execCommand fallback).
+- Post-refactor + intel engines: 12/12 pytest re-run PASS (multiple times).
+  EICAR upload → MALICIOUS via ClamAV; CIRCL returns real govCERT data.
+- Fixed: FraudBoard copy-packet clipboard promise (try/catch + execCommand fallback).
 
 ## Roadmap / backlog
+- DONE: Refactor server.py into routers.
+- DONE: Sum blocklist confirmations across duplicate indicators + escalate severity.
+- DONE: Offset pagination (`skip` + `limit`) on all feed endpoints.
+- DONE: Real threat intel — CIRCL hashlookup (keyless) + ClamAV (self-healing).
 - P1: Wire real VirusTotal when user supplies VT_API_KEY (backend already supports it).
-- DONE: Refactor server.py into routers (devices/network/community/fraud/remediation/incidents/scanner/stats).
-- P2: Sum blocklist confirmations across duplicate indicators (currently first-alert only).
+- P2: abuse.ch URLhaus / Google Safe Browsing for real *URL* intel (need free keys).
+- P2: Bake ClamAV into the container image for guaranteed availability on deploy.
 - P2: Pagination for alerts/logs/incidents for real-scale deployments.
 - P3: Auth (JWT or Emergent Google) if multi-user / per-owner fleets are needed.
 - P3: Persist remediation "in-progress" state server-side for crash resilience.
