@@ -307,8 +307,14 @@ async def _perform_scan(req: ScanRequest, clam_path: Optional[str] = None,
                         org_id: Optional[str] = None) -> ScanResult:
     local = _local_ioc_scan(req.target_type, req.target)
     ai = await _ai_heuristic(req.target_type, req.target, local)
-    vt = await _virustotal_lookup(req.target_type, req.target)
-    circl = await _circl_hashlookup(_hash_for_lookup(req))
+    vt_hash = _hash_for_lookup(req)
+    if req.target_type == "url":
+        vt = await _virustotal_lookup("url", req.target)
+    elif vt_hash:
+        vt = await _virustotal_lookup("file_hash", vt_hash)
+    else:
+        vt = None
+    circl = await _circl_hashlookup(vt_hash)
     clam = await _clamav_scan_path(clam_path) if clam_path else None
 
     score = local["score"] + ai["verdict_score_adjust"]
@@ -316,8 +322,14 @@ async def _perform_scan(req: ScanRequest, clam_path: Optional[str] = None,
     categories = list(local["categories"])
 
     if vt and vt.get("engines_malicious"):
-        score += min(30, int(vt["engines_malicious"]) * 5)
-        iocs.append(f"VirusTotal: {vt['engines_malicious']} engines flagged malicious")
+        n = int(vt["engines_malicious"])
+        if n >= 5:
+            score = max(score, 85)   # strong multi-engine consensus
+        elif n >= 2:
+            score = max(score, 50)
+        else:
+            score += 15
+        iocs.append(f"VirusTotal: {n}/{vt.get('engines_total') or '?'} engines flagged malicious")
         categories.append("Threat-Intel")
 
     if circl:

@@ -69,7 +69,11 @@ Each router exposes `router = APIRouter()`; `server.py` mounts them under `/api`
   install the engine + refresh signatures (runtime apt installs don't persist across
   pod restarts), and `clamscan` is resolved dynamically. Degrades gracefully to
   "updating"/"unavailable". Verified with the EICAR test file.
-- **VirusTotal** — optional; enabled only when `VT_API_KEY` is set.
+- **VirusTotal — LIVE (June 2026)**: user-supplied `VT_API_KEY` in backend/.env. URL scans
+  query VT URL reputation; file uploads + hash scans query VT by sha256 (added hash routing
+  in `_perform_scan`). Consensus weighting: ≥5 engines malicious → score ≥85 (malicious),
+  2–4 → ≥50 (suspicious), 1 → +15. Verified: EICAR hash 65/74 engines → malicious 90;
+  wicar.org EICAR URL 18/92 → malicious 85; wikipedia.org → clean 0.
 - `/api/stats` exposes `circl_enabled`, `clamav_status`, `intel_engines`.
 - Scanner UI shows a "THREAT INTEL" panel (CIRCL / ClamAV / VT) in the verdict.
 
@@ -128,6 +132,7 @@ Each router exposes `router = APIRouter()`; `server.py` mounts them under `/api`
   **Multi-tenancy + RBAC (backend + frontend, fully tested)**.
 - P1 (NEXT): **Stripe billing** (per-seat or per-endpoint subscriptions per org) — Stripe
   test key available in pod env. User wants to verify the org flow himself first.
+- DONE (June 2026): VirusTotal integration live with user API key.
 - P1: Wire real VirusTotal when user supplies VT_API_KEY (backend already supports it).
 - P2: abuse.ch URLhaus / Google Safe Browsing for real URL intel (need free keys).
 - P2: Bake ClamAV into the container image; tighten CORS to explicit origin allowlist.
