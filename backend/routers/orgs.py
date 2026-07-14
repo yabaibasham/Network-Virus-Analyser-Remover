@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from database import db, SUPERADMIN_EMAILS
-from models import Org, OrgCreate, Membership, Invite, InviteCreate, RoleUpdate
+from models import Org, OrgCreate, OrgSwitch, Membership, Invite, InviteCreate, RoleUpdate
 from routers.auth import get_current_user
 from context import get_current_context, ensure_owner
 
@@ -47,8 +47,8 @@ async def create_org(payload: OrgCreate, user=Depends(get_current_user)):
 
 
 @router.post("/orgs/switch")
-async def switch_org(payload: dict, user=Depends(get_current_user)):
-    org_id = (payload or {}).get("org_id")
+async def switch_org(payload: OrgSwitch, user=Depends(get_current_user)):
+    org_id = payload.org_id.strip()
     if not org_id:
         raise HTTPException(400, "org_id required")
     superadmin = user.email.lower() in SUPERADMIN_EMAILS

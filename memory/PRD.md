@@ -87,6 +87,16 @@ Each router exposes `router = APIRouter()`; `server.py` mounts them under `/api`
   temp file cleaned in finally. ClamAV scans the temp path directly.
 - Security audit findings SEC-001 (unauth privileged actions), SEC-002 (unauth PII read),
   SEC-003 (upload/scan abuse) → **REMEDIATED & verified** (iteration_2.json).
+- **Second audit (June 2026, post multi-tenancy): CONDITIONAL PASS → all 3 MEDIUM findings fixed:**
+  - SEC-001b NoSQL operator injection in `/api/orgs/switch` → typed `OrgSwitch(org_id: str)`
+    Pydantic body (operator payloads now 422). Verified via curl.
+  - SEC-002b Viewers could forge global fraud "verified" status → `ensure_write` on
+    corroborate + per-user dedup (`corroborated_by` list, atomic `$addToSet`/`$inc`).
+    Verified: repeat corroborations by same user don't increment.
+  - SEC-003b Unbounded paid scans → per-user sliding-window rate limit (10/min) on
+    `/api/scan` + `/api/scan/upload`, 429 on overflow. Verified in unit test.
+  - Audit confirmed: fleet tenant isolation sound (no cross-org IDOR), no stored XSS
+    (React-escaped), no path traversal, invite/role/last-owner logic has no bypass.
 - Remaining P3 hardening (not blocking): CORS `*` (env-configurable; same-origin so low impact),
   exception-type strings in some error responses.
 

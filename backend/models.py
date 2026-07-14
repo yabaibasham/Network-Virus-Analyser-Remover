@@ -138,6 +138,7 @@ class CommunityAlert(BaseModel):
     region: str = "Local Area"
     reporter_handle: str = "neighbourhood_watch"
     corroborations: int = 0
+    corroborated_by: List[str] = []      # user_ids — one corroboration per user
     status: Literal["active", "verified", "resolved"] = "active"
     org_id: Optional[str] = None       # provenance (reporting org); alerts stay globally visible
     org_name: Optional[str] = None
@@ -219,6 +220,10 @@ class Org(BaseModel):
     owner_user_id: str
     plan: str = "trial"
     created_at: str = Field(default_factory=now_iso)
+
+
+class OrgSwitch(BaseModel):
+    org_id: str
 
 
 class OrgCreate(BaseModel):

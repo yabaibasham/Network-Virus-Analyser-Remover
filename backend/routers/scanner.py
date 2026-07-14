@@ -15,6 +15,8 @@ import shutil
 import hashlib
 import asyncio
 import tempfile
+import time
+from collections import defaultdict, deque
 from typing import List, Optional, Dict, Any
 
 import httpx
@@ -28,6 +30,20 @@ from events import _log_event
 from context import get_current_context, ensure_write
 
 router = APIRouter()
+
+# Per-user sliding-window rate limit on paid/costly scan endpoints (SEC-003)
+SCAN_RATE_LIMIT_PER_MIN = 10
+_scan_hits: Dict[str, deque] = defaultdict(deque)
+
+
+def _enforce_scan_rate(user_id: str):
+    now = time.monotonic()
+    q = _scan_hits[user_id]
+    while q and now - q[0] > 60:
+        q.popleft()
+    if len(q) >= SCAN_RATE_LIMIT_PER_MIN:
+        raise HTTPException(429, "Scan rate limit reached (10/min) — try again shortly")
+    q.append(now)
 
 CLAM_DB_DIR = "/var/lib/clamav"
 
@@ -349,12 +365,14 @@ async def _perform_scan(req: ScanRequest, clam_path: Optional[str] = None,
 @router.post("/scan", response_model=ScanResult)
 async def run_scan(req: ScanRequest, ctx=Depends(get_current_context)):
     ensure_write(ctx)
+    _enforce_scan_rate(ctx["user"].user_id)
     return await _perform_scan(req, org_id=ctx["org_id"])
 
 
 @router.post("/scan/upload", response_model=ScanResult)
 async def scan_upload(file: UploadFile = File(...), ctx=Depends(get_current_context)):
     ensure_write(ctx)
+    _enforce_scan_rate(ctx["user"].user_id)
     max_bytes = 1024 * 1024 * 1024  # 1 GB cap
     h = hashlib.sha256()
     total = 0

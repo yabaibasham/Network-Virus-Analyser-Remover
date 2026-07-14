@@ -33,15 +33,24 @@ async def create_community_alert(payload: CommunityAlertCreate, ctx=Depends(get_
 
 @router.post("/community/alerts/{alert_id}/corroborate")
 async def corroborate_alert(alert_id: str, ctx=Depends(get_current_context)):
+    ensure_write(ctx)
+    user_id = ctx["user"].user_id
+    res = await db.community_alerts.update_one(
+        {"id": alert_id, "corroborated_by": {"$ne": user_id}},
+        {"$inc": {"corroborations": 1}, "$addToSet": {"corroborated_by": user_id}},
+    )
     doc = await db.community_alerts.find_one({"id": alert_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Alert not found")
-    alert = CommunityAlert(**doc)
-    alert.corroborations += 1
-    if alert.corroborations >= 5 and alert.status == "active":
-        alert.status = "verified"
-    await db.community_alerts.replace_one({"id": alert_id}, alert.model_dump())
-    return {"ok": True, "corroborations": alert.corroborations, "status": alert.status}
+    if doc.get("corroborations", 0) >= 5 and doc.get("status") == "active":
+        await db.community_alerts.update_one({"id": alert_id}, {"$set": {"status": "verified"}})
+        doc["status"] = "verified"
+    return {
+        "ok": True,
+        "corroborations": doc.get("corroborations", 0),
+        "status": doc["status"],
+        "already_corroborated": res.modified_count == 0,
+    }
 
 
 @router.get("/community/blocklist")
