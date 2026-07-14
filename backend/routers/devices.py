@@ -2,40 +2,42 @@
 import random
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from database import db, now_iso
 from models import Device, DeviceCreate, DeviceAction, ReportMissingPayload, GeoPoint
 from events import _log_event
+from context import get_current_context, ensure_write
 
 router = APIRouter()
 
 
 @router.get("/devices", response_model=List[Device])
-async def list_devices():
-    docs = await db.devices.find({}, {"_id": 0}).to_list(500)
+async def list_devices(ctx=Depends(get_current_context)):
+    docs = await db.devices.find({"org_id": ctx["org_id"]}, {"_id": 0}).to_list(500)
     return [Device(**d) for d in docs]
 
 
 @router.get("/devices/{device_id}", response_model=Device)
-async def get_device(device_id: str):
-    doc = await db.devices.find_one({"id": device_id}, {"_id": 0})
+async def get_device(device_id: str, ctx=Depends(get_current_context)):
+    doc = await db.devices.find_one({"id": device_id, "org_id": ctx["org_id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Device not found")
     return Device(**doc)
 
 
 @router.post("/devices", response_model=Device)
-async def create_device(payload: DeviceCreate):
-    dev = Device(**payload.model_dump())
+async def create_device(payload: DeviceCreate, ctx=Depends(get_current_context)):
+    ensure_write(ctx)
+    dev = Device(**payload.model_dump(), org_id=ctx["org_id"])
     await db.devices.insert_one(dev.model_dump())
     await _log_event("info", "FLEET", f"Device {dev.hostname} ({dev.device_type}) registered.", dev)
     return dev
 
 
 @router.get("/devices/{device_id}/surface")
-async def get_device_surface(device_id: str):
-    doc = await db.devices.find_one({"id": device_id}, {"_id": 0})
+async def get_device_surface(device_id: str, ctx=Depends(get_current_context)):
+    doc = await db.devices.find_one({"id": device_id, "org_id": ctx["org_id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Device not found")
     dev = Device(**doc)
@@ -101,8 +103,9 @@ async def get_device_surface(device_id: str):
 
 
 @router.post("/devices/{device_id}/action")
-async def device_action(device_id: str, payload: DeviceAction):
-    doc = await db.devices.find_one({"id": device_id}, {"_id": 0})
+async def device_action(device_id: str, payload: DeviceAction, ctx=Depends(get_current_context)):
+    ensure_write(ctx)
+    doc = await db.devices.find_one({"id": device_id, "org_id": ctx["org_id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Device not found")
     dev = Device(**doc)
@@ -139,8 +142,9 @@ async def device_action(device_id: str, payload: DeviceAction):
 
 # --- Recovery (legitimate, owner-consented lost/stolen device tracking) ---
 @router.post("/devices/{device_id}/report-missing")
-async def report_missing(device_id: str, payload: ReportMissingPayload):
-    doc = await db.devices.find_one({"id": device_id}, {"_id": 0})
+async def report_missing(device_id: str, payload: ReportMissingPayload, ctx=Depends(get_current_context)):
+    ensure_write(ctx)
+    doc = await db.devices.find_one({"id": device_id, "org_id": ctx["org_id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Device not found")
     dev = Device(**doc)
@@ -172,8 +176,9 @@ async def report_missing(device_id: str, payload: ReportMissingPayload):
 
 
 @router.post("/devices/{device_id}/mark-recovered")
-async def mark_recovered(device_id: str):
-    doc = await db.devices.find_one({"id": device_id}, {"_id": 0})
+async def mark_recovered(device_id: str, ctx=Depends(get_current_context)):
+    ensure_write(ctx)
+    doc = await db.devices.find_one({"id": device_id, "org_id": ctx["org_id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Device not found")
     dev = Device(**doc)
@@ -187,8 +192,8 @@ async def mark_recovered(device_id: str):
 
 
 @router.get("/recovery")
-async def recovery_list():
+async def recovery_list(ctx=Depends(get_current_context)):
     docs = await db.devices.find(
-        {"missing_status": {"$in": ["missing", "recovered"]}}, {"_id": 0}
+        {"org_id": ctx["org_id"], "missing_status": {"$in": ["missing", "recovered"]}}, {"_id": 0}
     ).to_list(200)
     return [Device(**d).model_dump() for d in docs]

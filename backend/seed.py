@@ -1,6 +1,9 @@
 """Seed data and idempotent startup seeding."""
-from database import db, log
-from models import Device, ThreatLog, CommunityAlert
+from database import db, log, now_iso
+from models import Device, ThreatLog, CommunityAlert, Membership
+
+DEMO_ORG_ID = "org_demo"
+DEMO_OWNER_ID = "user_testauditor01"
 
 SEED_DEVICES = [
     {"hostname": "core-linux-01", "device_type": "linux_server", "os": "Ubuntu 24.04 LTS",
@@ -71,10 +74,32 @@ SEED_ALERTS = [
 
 
 async def ensure_seed():
+    # Demo organisation + owner (also powers the seeded test session)
+    if not await db.orgs.find_one({"org_id": DEMO_ORG_ID}):
+        await db.orgs.insert_one({
+            "org_id": DEMO_ORG_ID, "name": "SentinelGrid Demo", "org_type": "business",
+            "region": "Global", "owner_user_id": DEMO_OWNER_ID, "plan": "demo",
+            "created_at": now_iso(),
+        })
+    if not await db.users.find_one({"user_id": DEMO_OWNER_ID}):
+        await db.users.insert_one({
+            "user_id": DEMO_OWNER_ID, "email": "auditor@sentinelgrid.local",
+            "name": "Demo Owner", "picture": "", "created_at": now_iso(),
+            "active_org_id": DEMO_ORG_ID,
+        })
+    if not await db.memberships.find_one({"org_id": DEMO_ORG_ID, "user_id": DEMO_OWNER_ID}):
+        await db.memberships.insert_one(
+            Membership(org_id=DEMO_ORG_ID, user_id=DEMO_OWNER_ID, role="owner").model_dump()
+        )
+    # Ensure the demo owner points at the demo org (covers pre-existing user docs)
+    await db.users.update_one(
+        {"user_id": DEMO_OWNER_ID, "active_org_id": None}, {"$set": {"active_org_id": DEMO_ORG_ID}}
+    )
+
     if await db.devices.count_documents({}) == 0:
         log.info("Seeding devices …")
         for d in SEED_DEVICES:
-            dev = Device(**d)
+            dev = Device(**{**d, "org_id": DEMO_ORG_ID})
             await db.devices.insert_one(dev.model_dump())
         await db.devices.update_one(
             {"hostname": "winws-finance"},
@@ -86,9 +111,16 @@ async def ensure_seed():
         )
     if await db.threat_logs.count_documents({}) == 0:
         for entry in SEED_LOGS:
-            tl = ThreatLog(**entry)
+            tl = ThreatLog(**{**entry, "org_id": DEMO_ORG_ID})
             await db.threat_logs.insert_one(tl.model_dump())
     if await db.community_alerts.count_documents({}) == 0:
         for entry in SEED_ALERTS:
-            ca = CommunityAlert(**entry)
+            # Community alerts are GLOBAL (cross-org) by design; provenance = demo org
+            ca = CommunityAlert(**{**entry, "org_id": DEMO_ORG_ID, "org_name": "SentinelGrid Demo"})
             await db.community_alerts.insert_one(ca.model_dump())
+
+    # Migrate any pre-tenancy records into the demo org (community alerts stay global)
+    for coll in ["devices", "threat_logs", "incidents", "scan_results",
+                 "remediation_jobs", "fraud_reports"]:
+        await db[coll].update_many({"org_id": {"$exists": False}}, {"$set": {"org_id": DEMO_ORG_ID}})
+        await db[coll].update_many({"org_id": None}, {"$set": {"org_id": DEMO_ORG_ID}})

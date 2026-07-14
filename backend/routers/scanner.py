@@ -18,13 +18,14 @@ import tempfile
 from typing import List, Optional, Dict, Any
 
 import httpx
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 from database import db, now_iso, log, EMERGENT_LLM_KEY, VT_API_KEY
 from models import ScanRequest, ScanResult
 from events import _log_event
+from context import get_current_context, ensure_write
 
 router = APIRouter()
 
@@ -286,7 +287,8 @@ def _hash_for_lookup(req: ScanRequest) -> Optional[str]:
     return None
 
 
-async def _perform_scan(req: ScanRequest, clam_path: Optional[str] = None) -> ScanResult:
+async def _perform_scan(req: ScanRequest, clam_path: Optional[str] = None,
+                        org_id: Optional[str] = None) -> ScanResult:
     local = _local_ioc_scan(req.target_type, req.target)
     ai = await _ai_heuristic(req.target_type, req.target, local)
     vt = await _virustotal_lookup(req.target_type, req.target)
@@ -333,22 +335,26 @@ async def _perform_scan(req: ScanRequest, clam_path: Optional[str] = None) -> Sc
         vt_summary=vt,
         circl_summary=circl,
         clamav_summary=clam,
+        org_id=org_id,
     )
     await db.scan_results.insert_one(result.model_dump())
 
     sev = {"malicious": "critical", "suspicious": "warning", "clean": "info"}[verdict]
     label = req.filename or req.target
-    await _log_event(sev, "SCAN", f"{verdict.upper()} · score {final_score}/100 · {label[:80]}")
+    await _log_event(sev, "SCAN", f"{verdict.upper()} · score {final_score}/100 · {label[:80]}",
+                     org_id=org_id)
     return result
 
 
 @router.post("/scan", response_model=ScanResult)
-async def run_scan(req: ScanRequest):
-    return await _perform_scan(req)
+async def run_scan(req: ScanRequest, ctx=Depends(get_current_context)):
+    ensure_write(ctx)
+    return await _perform_scan(req, org_id=ctx["org_id"])
 
 
 @router.post("/scan/upload", response_model=ScanResult)
-async def scan_upload(file: UploadFile = File(...)):
+async def scan_upload(file: UploadFile = File(...), ctx=Depends(get_current_context)):
+    ensure_write(ctx)
     max_bytes = 1024 * 1024 * 1024  # 1 GB cap
     h = hashlib.sha256()
     total = 0
@@ -372,7 +378,7 @@ async def scan_upload(file: UploadFile = File(...)):
         text_sample = head.decode("utf-8", errors="ignore")
         combined = f"sha256={sha}\nfilename={file.filename}\n--snippet--\n{text_sample}"
         req = ScanRequest(target_type="file_text", target=combined, filename=file.filename, file_sha256=sha)
-        return await _perform_scan(req, clam_path=tmp.name)
+        return await _perform_scan(req, clam_path=tmp.name, org_id=ctx["org_id"])
     finally:
         try:
             tmp.close()
@@ -386,6 +392,6 @@ async def scan_upload(file: UploadFile = File(...)):
 
 
 @router.get("/scans", response_model=List[ScanResult])
-async def list_scans(limit: int = 25, skip: int = 0):
-    docs = await db.scan_results.find({}, {"_id": 0}).sort("timestamp", -1).skip(skip).limit(limit).to_list(limit)
+async def list_scans(limit: int = 25, skip: int = 0, ctx=Depends(get_current_context)):
+    docs = await db.scan_results.find({"org_id": ctx["org_id"]}, {"_id": 0}).sort("timestamp", -1).skip(skip).limit(limit).to_list(limit)
     return [ScanResult(**d) for d in docs]

@@ -41,6 +41,7 @@ class Device(BaseModel):
     owner_email: Optional[str] = None
     missing_status: MissingStatus = "active"
     last_known_location: Optional[GeoPoint] = None
+    org_id: Optional[str] = None
 
 
 class DeviceCreate(BaseModel):
@@ -62,6 +63,7 @@ class ThreatLog(BaseModel):
     category: str
     message: str
     incident_id: Optional[str] = None
+    org_id: Optional[str] = None
 
 
 class Incident(BaseModel):
@@ -78,6 +80,7 @@ class Incident(BaseModel):
     summary: str
     log_ids: List[str] = []
     timeline: List[Dict[str, Any]] = []
+    org_id: Optional[str] = None
 
 
 class ScanRequest(BaseModel):
@@ -103,6 +106,7 @@ class ScanResult(BaseModel):
     vt_summary: Optional[Dict[str, Any]] = None       # virustotal block if available
     circl_summary: Optional[Dict[str, Any]] = None    # CIRCL hashlookup (govCERT-LU)
     clamav_summary: Optional[Dict[str, Any]] = None   # local ClamAV signature scan
+    org_id: Optional[str] = None
 
 
 class DeviceAction(BaseModel):
@@ -135,6 +139,8 @@ class CommunityAlert(BaseModel):
     reporter_handle: str = "neighbourhood_watch"
     corroborations: int = 0
     status: Literal["active", "verified", "resolved"] = "active"
+    org_id: Optional[str] = None       # provenance (reporting org); alerts stay globally visible
+    org_name: Optional[str] = None
 
 
 class CommunityAlertCreate(BaseModel):
@@ -175,6 +181,7 @@ class FraudReport(BaseModel):
     reporter_contact: Optional[str] = None
     status: Literal["draft", "submitted", "escalated"] = "submitted"
     evidence_packet: Optional[str] = None
+    org_id: Optional[str] = None
 
 
 class RemediationJob(BaseModel):
@@ -187,6 +194,7 @@ class RemediationJob(BaseModel):
     threats_removed: int = 0
     steps: List[Dict[str, Any]] = []
     summary: str = ""
+    org_id: Optional[str] = None
 
 
 class User(BaseModel):
@@ -196,3 +204,52 @@ class User(BaseModel):
     name: str = ""
     picture: str = ""
     created_at: Optional[str] = None
+    active_org_id: Optional[str] = None
+
+
+Role = Literal["owner", "analyst", "viewer"]
+
+
+class Org(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    org_id: str = Field(default_factory=lambda: f"org_{uuid.uuid4().hex[:12]}")
+    name: str
+    org_type: Literal["council", "agency", "city", "fund", "business", "other"] = "other"
+    region: str = ""
+    owner_user_id: str
+    plan: str = "trial"
+    created_at: str = Field(default_factory=now_iso)
+
+
+class OrgCreate(BaseModel):
+    name: str
+    org_type: Literal["council", "agency", "city", "fund", "business", "other"] = "other"
+    region: str = ""
+
+
+class Membership(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    org_id: str
+    user_id: str
+    role: Role = "viewer"
+    created_at: str = Field(default_factory=now_iso)
+
+
+class Invite(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    org_id: str
+    email: str
+    role: Role = "viewer"
+    invited_by: Optional[str] = None
+    status: Literal["pending", "accepted", "revoked"] = "pending"
+    created_at: str = Field(default_factory=now_iso)
+
+
+class InviteCreate(BaseModel):
+    email: str
+    role: Role = "viewer"
+
+
+class RoleUpdate(BaseModel):
+    role: Role

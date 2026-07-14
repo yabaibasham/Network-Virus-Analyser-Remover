@@ -12,9 +12,10 @@ from starlette.middleware.cors import CORSMiddleware
 from database import client
 from seed import ensure_seed
 from routers.scanner import bootstrap_clamav
-from routers.auth import get_current_user
+from context import get_current_context
 from routers import (
     auth,
+    orgs,
     stats,
     devices,
     incidents,
@@ -32,11 +33,13 @@ api_router = APIRouter(prefix="/api")
 # Public routes (no authentication) — landing metrics + auth handshake
 api_router.include_router(auth.router)
 api_router.include_router(stats.router)
+# Org onboarding/management — requires auth but NOT an active org (routes self-gate)
+api_router.include_router(orgs.router)
 
-# Protected routes — require an authenticated Google session
+# Protected + tenant-scoped routes — require an authenticated session AND an active org
 _protected = (devices, incidents, scanner, network, community, fraud, remediation)
 for module in _protected:
-    api_router.include_router(module.router, dependencies=[Depends(get_current_user)])
+    api_router.include_router(module.router, dependencies=[Depends(get_current_context)])
 
 app.include_router(api_router)
 

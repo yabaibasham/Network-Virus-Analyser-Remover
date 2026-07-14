@@ -1,15 +1,47 @@
 import axios from "axios";
+import { toast } from "sonner";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
 export const api = axios.create({ baseURL: API, timeout: 60000, withCredentials: true });
 
+// Graceful global handling: 401 -> login, 403 -> role toast
+api.interceptors.response.use(
+  (r) => r,
+  (error) => {
+    const status = error?.response?.status;
+    const url = error?.config?.url || "";
+    if (status === 401 && !url.includes("/auth/me")) {
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    } else if (status === 403) {
+      const msg = error?.response?.data?.detail || "You don't have permission for that action";
+      toast.error(msg);
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth
 export const postSession = (sessionId) =>
   api.post("/auth/session", {}, { headers: { "X-Session-ID": sessionId } }).then((r) => r.data);
 export const fetchMe = () => api.get("/auth/me").then((r) => r.data);
 export const logout = () => api.post("/auth/logout").then((r) => r.data);
+
+// Organisations
+export const fetchMyOrgs = () => api.get("/orgs/me").then((r) => r.data);
+export const createOrg = (payload) => api.post("/orgs", payload).then((r) => r.data);
+export const switchOrg = (orgId) => api.post("/orgs/switch", { org_id: orgId }).then((r) => r.data);
+export const fetchCurrentOrg = () => api.get("/orgs/current").then((r) => r.data);
+export const inviteMember = (email, role) =>
+  api.post("/orgs/invite", { email, role }).then((r) => r.data);
+export const revokeInvite = (id) => api.delete(`/orgs/invites/${id}`).then((r) => r.data);
+export const changeMemberRole = (userId, role) =>
+  api.post(`/orgs/members/${userId}/role`, { role }).then((r) => r.data);
+export const removeMember = (userId) => api.delete(`/orgs/members/${userId}`).then((r) => r.data);
+export const fetchOrgStats = () => api.get("/org/stats").then((r) => r.data);
 
 export const fetchDevices = () => api.get("/devices").then((r) => r.data);
 export const fetchDevice = (id) => api.get(`/devices/${id}`).then((r) => r.data);

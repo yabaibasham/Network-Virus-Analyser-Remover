@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ShieldAlert, Globe2, LogOut } from "lucide-react";
 import { logout } from "@/lib/api";
+import OrgSwitcher from "@/components/sentinel/OrgSwitcher";
 
 function useClock() {
   const [t, setT] = useState(new Date());
@@ -12,7 +13,17 @@ function useClock() {
   return t;
 }
 
-export default function HeaderBar({ logs = [], stats, user }) {
+export default function HeaderBar({
+  logs = [],
+  stats,
+  user,
+  orgs = [],
+  activeOrgId,
+  role,
+  superadmin,
+  onManageMembers,
+  onNewOrg,
+}) {
   const clock = useClock();
   const navigate = useNavigate();
   const top = logs.slice(0, 12);
@@ -68,6 +79,16 @@ export default function HeaderBar({ logs = [], stats, user }) {
           )}
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {orgs.length > 0 && (
+            <OrgSwitcher
+              orgs={orgs}
+              activeOrgId={activeOrgId}
+              role={role}
+              superadmin={superadmin}
+              onManage={onManageMembers}
+              onNew={onNewOrg}
+            />
+          )}
           {user && (
             <div className="hidden sm:flex items-center gap-2" data-testid="header-user">
               {user.picture ? (

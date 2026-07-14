@@ -2,11 +2,12 @@
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from database import db, now_iso
 from models import FraudReport, FraudReportCreate
 from events import _log_event
+from context import get_current_context, ensure_write
 
 router = APIRouter()
 
@@ -54,18 +55,20 @@ def _build_evidence_packet(rep: FraudReport) -> str:
 
 
 @router.get("/community/fraud-reports", response_model=List[FraudReport])
-async def list_fraud_reports(limit: int = 50, skip: int = 0):
-    docs = await db.fraud_reports.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+async def list_fraud_reports(limit: int = 50, skip: int = 0, ctx=Depends(get_current_context)):
+    docs = await db.fraud_reports.find({"org_id": ctx["org_id"]}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return [FraudReport(**d) for d in docs]
 
 
 @router.post("/community/fraud-reports", response_model=FraudReport)
-async def create_fraud_report(payload: FraudReportCreate):
+async def create_fraud_report(payload: FraudReportCreate, ctx=Depends(get_current_context)):
+    ensure_write(ctx)
     seq = await db.fraud_reports.count_documents({}) + 1
     case_ref = f"SG-{datetime.now(timezone.utc).strftime('%Y%m')}-{seq:04d}"
-    rep = FraudReport(case_ref=case_ref, **payload.model_dump())
+    rep = FraudReport(case_ref=case_ref, **payload.model_dump(), org_id=ctx["org_id"])
     rep.evidence_packet = _build_evidence_packet(rep)
     await db.fraud_reports.insert_one(rep.model_dump())
     await _log_event("warning", "FRAUD",
-                     f"Fraud report {case_ref} filed: {rep.scheme_type} · {rep.victims_count} victim(s).")
+                     f"Fraud report {case_ref} filed: {rep.scheme_type} · {rep.victims_count} victim(s).",
+                     org_id=ctx["org_id"])
     return rep

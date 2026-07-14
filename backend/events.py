@@ -5,11 +5,14 @@ from database import db, now_iso
 from models import ThreatLog, Incident, Device
 
 
-async def _log_event(severity: str, category: str, message: str, device: Optional[Device] = None):
+async def _log_event(severity: str, category: str, message: str,
+                     device: Optional[Device] = None, org_id: Optional[str] = None):
+    org = org_id or (device.org_id if device else None)
     entry = ThreatLog(
         severity=severity, category=category, message=message,
         device_id=device.id if device else None,
         device_hostname=device.hostname if device else None,
+        org_id=org,
     )
     await db.threat_logs.insert_one(entry.model_dump())
     # Auto-correlate into incident for warning+
@@ -20,7 +23,8 @@ async def _log_event(severity: str, category: str, message: str, device: Optiona
 
 async def _correlate_incident(entry: ThreatLog, device: Optional[Device]):
     """Group recent severity events from the same device/category into an open incident."""
-    query: Dict[str, Any] = {"status": {"$ne": "closed"}, "category": entry.category}
+    query: Dict[str, Any] = {"status": {"$ne": "closed"}, "category": entry.category,
+                             "org_id": entry.org_id}
     if device:
         query["device_id"] = device.id
     existing = await db.incidents.find_one(query, {"_id": 0})
@@ -45,6 +49,7 @@ async def _correlate_incident(entry: ThreatLog, device: Optional[Device]):
             device_hostname=device.hostname if device else None,
             log_ids=[entry.id],
             timeline=[{"at": entry.timestamp, "event": entry.message, "severity": entry.severity}],
+            org_id=entry.org_id,
         )
         await db.incidents.insert_one(inc.model_dump())
         await db.threat_logs.update_one({"id": entry.id}, {"$set": {"incident_id": inc.id}})

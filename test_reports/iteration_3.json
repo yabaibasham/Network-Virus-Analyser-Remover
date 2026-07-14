@@ -1,0 +1,35 @@
+{
+  "summary": "Full E2E validation of new multi-tenant frontend wiring (org onboarding gate, OrgSwitcher, MembersDialog) + backend org endpoints regression. Backend: 22/22 pytest tests PASS in /app/backend/tests/test_orgs.py (unauth 401, auditor scoped GETs, no-org user 409, org create+switch, isolation empty fleet, invites pending/immediate/bad-email, last-owner guards). Frontend Playwright verified 7/7 core flows: (1) no-org user sees org-onboarding, creates org, lands in dashboard with switcher showing new org name; (2) auditor dashboard shows OrgSwitcher 'SentinelGrid Demo' + role OWNER; (3) switcher menu opens, Manage members opens MembersDialog listing auditor; (4) invite non-existing email creates pending invite (revocable, verified); (5) invite existing user (neworg@) added immediately as member; (6) switcher > New organisation shows OrgOnboarding with 'back to dashboard' button; (7) unauth /dashboard redirects to /login. Test data (TEST_ orgs, pending invites, neworg memberships) cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "MembersDialog", "issues": ["A11y warning: Radix DialogContent missing `Description` or `aria-describedby` — console warning only, not blocking. Consider adding <DialogDescription> for screen readers."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_orgs.py",
+    "/app/test_reports/pytest/orgs_results.xml"
+  ],
+  "action_items": [
+    "Optional: add DialogDescription to MembersDialog for a11y (Radix warning in console)."
+  ],
+  "critical_code_review_comments": [
+    "orgs.py cleanly separates owner-only mutations via ensure_owner(); last-owner protection is enforced on both role-demote and remove — verified.",
+    "context.py returns 409 (not 401) when authed user has no active org — this is the correct semantic and the frontend Dashboard.jsx handles it by rendering OrgOnboarding based on empty orgs list (not on 409). Works because /api/orgs/me is public-to-authed-user and returns empty orgs, so dashboard never reaches a 409 for a no-org user during initial load. Good.",
+    "OrgSwitcher pick() reloads window on switch — simple & reliable but heavier than a state refresh; acceptable for now.",
+    "Invite endpoint auto-accepts if email matches an existing user by looking up db.users by email — correct short-circuit. Case is normalised to lower() before lookup.",
+    "Superadmin path in /api/orgs/me lists ALL orgs but role falls back to 'owner' if no membership exists — matches product intent.",
+    "Dashboard.jsx orgStatus state machine (loading/none/ready) prevents refresh() firing before an org is active — no thrashing calls to /api/devices."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_orgs.py"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% (7/7 flows verified)"},
+  "test_credentials": "Auditor (with org_demo): Bearer test_session_auditor_01 / cookie session_token=test_session_auditor_01 (user_testauditor01). No-org user: Bearer test_session_neworg_01 (user_neworg01). Both re-seeded during this run.",
+  "seed_data_creation": "Seeded user_neworg01 + session test_session_neworg_01 for onboarding tests (no memberships, active_org_id=None). Re-seeded auditor session/membership. All TEST_ orgs and pending TEST_ invites cleaned up at end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Multi-tenant frontend + backend all green. Both test users still seeded in MongoDB (session tokens above). If /api/auth/logout is invoked during a UI test, the corresponding session row is deleted; re-seed using /app/memory/test_credentials.md snippet before subsequent auth-gated tests. For frontend Playwright, cleanup any created TEST_-prefixed orgs at the end (regex match on name)."
+}

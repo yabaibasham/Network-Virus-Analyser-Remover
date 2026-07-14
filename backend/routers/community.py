@@ -1,35 +1,38 @@
-"""Community Watch — consent-based neighbourhood threat sharing."""
+"""Community Watch — GLOBAL (cross-org) consent-based neighbourhood threat sharing."""
 from typing import List, Dict, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from database import db, now_iso
 from models import CommunityAlert, CommunityAlertCreate
 from events import _log_event
+from context import get_current_context, ensure_write
 
 router = APIRouter()
-
 
 SEV_RANK = {"info": 0, "warning": 1, "danger": 2, "critical": 3}
 
 
 @router.get("/community/alerts", response_model=List[CommunityAlert])
-async def list_community_alerts(limit: int = 100, skip: int = 0):
+async def list_community_alerts(limit: int = 100, skip: int = 0, ctx=Depends(get_current_context)):
     docs = await db.community_alerts.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return [CommunityAlert(**d) for d in docs]
 
 
 @router.post("/community/alerts", response_model=CommunityAlert)
-async def create_community_alert(payload: CommunityAlertCreate):
-    alert = CommunityAlert(**{k: v for k, v in payload.model_dump().items() if v is not None})
+async def create_community_alert(payload: CommunityAlertCreate, ctx=Depends(get_current_context)):
+    ensure_write(ctx)
+    data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    alert = CommunityAlert(**data, org_id=ctx["org_id"], org_name=ctx["org"].get("name"))
     await db.community_alerts.insert_one(alert.model_dump())
     await _log_event(alert.severity, "WATCH",
-                     f"Community alert filed: {alert.title} ({alert.kind}) · {alert.region}")
+                     f"Community alert filed: {alert.title} ({alert.kind}) · {alert.region}",
+                     org_id=ctx["org_id"])
     return alert
 
 
 @router.post("/community/alerts/{alert_id}/corroborate")
-async def corroborate_alert(alert_id: str):
+async def corroborate_alert(alert_id: str, ctx=Depends(get_current_context)):
     doc = await db.community_alerts.find_one({"id": alert_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Alert not found")
@@ -64,14 +67,11 @@ async def community_blocklist():
                 }
             else:
                 e = seen[key]
-                # Sum corroborations across every alert that named this indicator
                 e["confirmations"] += alert.corroborations
                 e["reports"] += 1
-                # Escalate to the highest severity seen (and adopt that alert's kind)
                 if SEV_RANK[alert.severity] > SEV_RANK[e["severity"]]:
                     e["severity"] = alert.severity
                     e["kind"] = alert.kind
-                # Keep the earliest first-seen timestamp
                 if alert.created_at < e["first_seen"]:
                     e["first_seen"] = alert.created_at
     entries = sorted(seen.values(), key=lambda e: (e["confirmations"], e["reports"]), reverse=True)

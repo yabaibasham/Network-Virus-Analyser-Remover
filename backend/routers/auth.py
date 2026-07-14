@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Request, Response, HTTPException
 
 from database import db, now_iso
-from models import User
+from models import User, Membership
 
 router = APIRouter()
 
@@ -86,6 +86,26 @@ async def create_session(request: Request, response: Response):
             "user_id": user_id, "email": email, "name": name,
             "picture": picture, "created_at": now_iso(),
         })
+
+    # Auto-accept any pending invites addressed to this email → create memberships
+    async for inv in db.invites.find({"email": email.lower(), "status": "pending"}):
+        exists = await db.memberships.find_one({"org_id": inv["org_id"], "user_id": user_id})
+        if not exists:
+            await db.memberships.insert_one(
+                Membership(org_id=inv["org_id"], user_id=user_id, role=inv["role"]).model_dump()
+            )
+        await db.invites.update_one({"id": inv["id"]}, {"$set": {"status": "accepted"}})
+
+    # Resolve the active organisation
+    current = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    active = current.get("active_org_id")
+    is_valid = bool(active) and bool(
+        await db.memberships.find_one({"org_id": active, "user_id": user_id})
+    )
+    if not is_valid:
+        first = await db.memberships.find_one({"user_id": user_id}, {"_id": 0})
+        active = first["org_id"] if first else None
+        await db.users.update_one({"user_id": user_id}, {"$set": {"active_org_id": active}})
 
     expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_DAYS)
     await db.user_sessions.insert_one({

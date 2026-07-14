@@ -1,18 +1,19 @@
-"""LAN / WAN network topology derived from the live fleet."""
+"""LAN / WAN network topology derived from the org's fleet."""
 import random
 from typing import List, Dict, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from database import db, now_iso
 from models import Device
+from context import get_current_context
 
 router = APIRouter()
 
 
 @router.get("/network/topology")
-async def network_topology():
-    docs = await db.devices.find({}, {"_id": 0}).to_list(500)
+async def network_topology(ctx=Depends(get_current_context)):
+    docs = await db.devices.find({"org_id": ctx["org_id"]}, {"_id": 0}).to_list(500)
     devices = [Device(**d) for d in docs]
 
     nodes: List[Dict[str, Any]] = [

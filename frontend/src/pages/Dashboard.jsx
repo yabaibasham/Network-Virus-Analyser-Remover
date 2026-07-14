@@ -12,12 +12,15 @@ import NetworkMap from "@/components/sentinel/NetworkMap";
 import CommunityWatch from "@/components/sentinel/CommunityWatch";
 import FraudBoard from "@/components/sentinel/FraudBoard";
 import RemediationConsole from "@/components/sentinel/RemediationConsole";
+import OrgOnboarding from "@/components/sentinel/OrgOnboarding";
+import MembersDialog from "@/components/sentinel/MembersDialog";
 import {
   fetchDevices,
   fetchThreatLogs,
   fetchStats,
   fetchIncidents,
-  fetchMe,
+  fetchMyOrgs,
+  switchOrg,
 } from "@/lib/api";
 
 const VIEW_TITLE = {
@@ -35,7 +38,31 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("overview");
-  const [user, setUser] = useState(null);
+
+  const [orgState, setOrgState] = useState(null); // {orgs, active_org_id, superadmin, user}
+  const [orgStatus, setOrgStatus] = useState("loading"); // loading | none | ready
+  const [creatingOrg, setCreatingOrg] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+
+  const loadOrgs = useCallback(async () => {
+    try {
+      let info = await fetchMyOrgs();
+      if (!info.orgs.length) {
+        setOrgState(info);
+        setOrgStatus("none");
+        return;
+      }
+      const activeValid = info.orgs.some((o) => o.org_id === info.active_org_id);
+      if (!activeValid) {
+        await switchOrg(info.orgs[0].org_id);
+        info = await fetchMyOrgs();
+      }
+      setOrgState(info);
+      setOrgStatus("ready");
+    } catch {
+      /* 401 redirect handled globally */
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     const [d, l, s, inc] = await Promise.all([
@@ -52,11 +79,46 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    fetchMe().then(setUser).catch(() => {});
+    loadOrgs();
+  }, [loadOrgs]);
+
+  useEffect(() => {
+    if (orgStatus !== "ready") return;
     refresh();
     const t = setInterval(refresh, 12000);
     return () => clearInterval(t);
-  }, [refresh]);
+  }, [orgStatus, refresh]);
+
+  if (orgStatus === "loading") {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center bg-[#050505] text-white"
+        data-testid="org-loading"
+      >
+        <div className="font-mono text-sm text-[#888] flex items-center gap-3">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#00F5A0] animate-pulse" />
+          Loading organisation…
+        </div>
+      </div>
+    );
+  }
+
+  if (orgStatus === "none" || creatingOrg) {
+    return (
+      <OrgOnboarding
+        user={orgState?.user}
+        onCancel={creatingOrg ? () => setCreatingOrg(false) : undefined}
+        onCreated={() => {
+          setCreatingOrg(false);
+          window.location.reload();
+        }}
+      />
+    );
+  }
+
+  const activeRole =
+    orgState?.orgs.find((o) => o.org_id === orgState.active_org_id)?.role ||
+    (orgState?.superadmin ? "owner" : null);
 
   return (
     <div
@@ -65,7 +127,17 @@ export default function Dashboard() {
     >
       <Sidebar view={view} setView={setView} />
       <main className="flex-1 flex flex-col min-w-0">
-        <HeaderBar logs={logs} stats={stats} user={user} />
+        <HeaderBar
+          logs={logs}
+          stats={stats}
+          user={orgState?.user}
+          orgs={orgState?.orgs}
+          activeOrgId={orgState?.active_org_id}
+          role={activeRole}
+          superadmin={orgState?.superadmin}
+          onManageMembers={() => setMembersOpen(true)}
+          onNewOrg={() => setCreatingOrg(true)}
+        />
         <StatsBar stats={stats} />
 
         <div className="flex items-center gap-3 px-4 py-2 border-b border-[#222] bg-[#0a0a0a]">
@@ -115,6 +187,11 @@ export default function Dashboard() {
         deviceId={selectedId}
         onClose={() => setSelectedId(null)}
         onChanged={refresh}
+      />
+      <MembersDialog
+        open={membersOpen}
+        onOpenChange={setMembersOpen}
+        currentUserId={orgState?.user?.user_id}
       />
     </div>
   );
