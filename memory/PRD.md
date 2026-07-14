@@ -96,12 +96,28 @@ Each router exposes `router = APIRouter()`; `server.py` mounts them under `/api`
   login/redirect/cookie/sign-out flow; EICAR upload → malicious (ClamAV); clean → clean.
 - Test session seeded: Bearer `test_session_auditor_01` (see /app/memory/test_credentials.md).
 
+## Multi-tenancy (COMPLETE — backend + frontend, June 2026)
+- **Backend** (`routers/orgs.py`, `context.py`): orgs, memberships (owner/analyst/viewer),
+  invites (auto-accept for existing users), org switching, superadmin
+  (thomas.basham1@gmail.com / bashampvp@gmail.com sees all orgs). `get_current_context`
+  enforces active org (409 if none) + role; `ensure_write` / `ensure_owner` guards.
+  All fleet data (devices, threat_logs, incidents, scans, recovery) scoped by `org_id`;
+  community alerts + fraud reports remain GLOBAL. Demo fleet lives in `org_demo`.
+- **Frontend** (June 2026): `Dashboard.jsx` org gate — fetches `/api/orgs/me`; no orgs →
+  renders `OrgOnboarding.jsx` (create org form, sign-out); invalid/missing active org →
+  auto-switch to first org. `OrgSwitcher.jsx` in `HeaderBar` (org name + role badge,
+  switch org, New organisation with back button, Manage members for owners).
+  `MembersDialog.jsx`: invite by email + role, pending invites w/ revoke, change role,
+  remove member (last-owner protected server-side).
+- **Tested** (iteration_3.json): 22/22 backend pytest + 7/7 frontend Playwright flows PASS
+  (onboarding gate, org creation, switcher, members dialog, invites, isolation, auth redirect).
+
 ## Roadmap / backlog
 - DONE: Router refactor; blocklist confirmation-summing + pagination; CIRCL + ClamAV intel;
-  Google auth + route gating + 1GB streaming uploads (security remediation).
-- P1: **Multi-tenancy** (orgs: councils / agencies / funds isolated) + **roles** (owner/analyst/viewer)
-  — foundation for the contractor/billing business model.
-- P1: **Stripe billing** (per-seat or per-endpoint) once orgs exist.
+  Google auth + route gating + 1GB streaming uploads (security remediation);
+  **Multi-tenancy + RBAC (backend + frontend, fully tested)**.
+- P1 (NEXT): **Stripe billing** (per-seat or per-endpoint subscriptions per org) — Stripe
+  test key available in pod env. User wants to verify the org flow himself first.
 - P1: Wire real VirusTotal when user supplies VT_API_KEY (backend already supports it).
 - P2: abuse.ch URLhaus / Google Safe Browsing for real URL intel (need free keys).
 - P2: Bake ClamAV into the container image; tighten CORS to explicit origin allowlist.

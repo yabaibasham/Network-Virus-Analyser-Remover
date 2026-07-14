@@ -3,6 +3,7 @@ import { Users, UserPlus, Trash2, Loader2, MailX } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -101,6 +102,9 @@ export default function MembersDialog({ open, onOpenChange, currentUserId }) {
             <Users size={18} strokeWidth={1.5} />
             {data?.org?.name ? `${data.org.name} — TEAM` : "TEAM"}
           </DialogTitle>
+          <DialogDescription className="font-mono text-[10px] text-[#666] uppercase tracking-[0.15em]">
+            Invite analysts and viewers, manage roles
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
